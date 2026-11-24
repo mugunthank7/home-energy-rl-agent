@@ -1,0 +1,29 @@
+# Ablation: the plan's literal reward (peak increase, w_peak 0.5, w_viol 1.0) with baseline hyperparameters.
+name: plan_reward
+env_overrides:
+  reward: {peak_term: increase, w_peak: 0.5, w_viol: 1.0}
+seeds: [42, 43, 44]
+qlearning:
+  alpha: 0.1
+  gamma: 0.95
+  epsilon_start: 1.0
+  epsilon_end: 0.05
+  epsilon_schedule: exponential     # linear | exponential_fast | exponential | exponential_slow
+  # Fraction of training at which epsilon reaches epsilon_end, per schedule.
+  schedule_fractions:
+    linear: 0.8
+    exponential_fast: 0.3
+    exponential: 0.6
+    exponential_slow: 0.9
+  episodes: 3000
+  eval_every: 250                   # greedy validation check during training (learning curve)
+  eval_episodes: 20
+discretization:
+  soc_bins: 10
+  hour_buckets: 24
+  demand_bins: 5
+  tariff_periods: 3
+splits:
+  train: [2007, 2008]
+  validation: [2009]
+  test: [2010]

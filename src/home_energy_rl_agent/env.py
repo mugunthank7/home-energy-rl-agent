@@ -25,7 +25,7 @@ def load_env_config(path: str | Path = ROOT / "configs" / "env.yaml") -> dict:
 
 def obs_names(k: int, forecast_h: int) -> list[str]:
     """Observation layout, in order."""
-    names = ["hour_sin", "hour_cos", "day_of_week", "soc", "demand_kw", "tariff_period"]
+    names = ["hour_sin", "hour_cos", "day_of_week", "soc", "demand_kw", "tariff_period", "peak_kw"]
     names += [f"demand_lag{i}" for i in range(1, k + 1)]
     names += [f"demand_next{i}" for i in range(1, forecast_h + 1)]
     return names
@@ -53,6 +53,13 @@ class EnergyEnv(gym.Env):
         self.forecast_h = int(self.cfg["forecast_horizon_h"]) if self.cfg["forecast"] == "perfect" else 0
         r = self.cfg["reward"]
         self.w_peak, self.w_viol, self.w_cycle = r["w_peak"], r["w_viol"], r["w_cycle"]
+        # "increase": penalize each rise in the episode peak (the plan's literal formula).
+        # "excess": penalize each rise in (peak import - peak demand), i.e. only the peak the
+        # battery adds. Peak demand ignores actions, so this changes the reward by an
+        # action-independent constant: same best policy, far less noise.
+        self.peak_term = r.get("peak_term", "increase")
+        if self.peak_term not in ("increase", "excess"):
+            raise ValueError(f"unknown peak_term {self.peak_term!r}")
 
         # --- Precompute per-hour arrays for the whole series so step() stays fast ---
         self.series = demand
@@ -82,7 +89,7 @@ class EnergyEnv(gym.Env):
         vec = [
             np.sin(2 * np.pi * hour / 24), np.cos(2 * np.pi * hour / 24),
             self._dow_all[i], self.battery.soc, self._demand_all[i], self._period_all[i],
-            *lags, *ahead,
+            self.peak, *lags, *ahead,
         ]
         return np.array(vec, dtype=np.float32)
 
@@ -98,6 +105,7 @@ class EnergyEnv(gym.Env):
         self.t = 0
         self.battery.reset(options.get("soc_start"))
         self.peak = 0.0
+        self.demand_peak = 0.0
         self.totals = {
             "energy_cost": 0.0, "throughput_kwh": 0.0, "violations": 0, "demand_kwh": 0.0,
         }
@@ -112,8 +120,13 @@ class EnergyEnv(gym.Env):
 
         grid_import = demand + res.charge_kw - res.discharge_kw
         cost = price * grid_import
-        peak_increase = max(0.0, grid_import - self.peak)
-        self.peak = max(self.peak, grid_import)
+        prev_peak, prev_demand_peak = self.peak, self.demand_peak
+        self.peak = max(prev_peak, grid_import)
+        self.demand_peak = max(prev_demand_peak, demand)
+        if self.peak_term == "excess":
+            peak_increase = (self.peak - self.demand_peak) - (prev_peak - prev_demand_peak)
+        else:
+            peak_increase = self.peak - prev_peak
         throughput = res.charge_kw + res.discharge_kw
         reward = (
             -cost

@@ -48,3 +48,14 @@ Plain-English notes so each module can be explained on video. One entry per modu
 - **evaluate():** picks the episode start points once from a seed, then runs the controller and a no-battery reference on those exact same episodes. That is what makes comparisons fair.
 - **Metrics:** reward, energy cost, total cost (energy plus demand charge), peak kW, violations, equivalent full cycles, and savings vs no-battery. Savings use the ratio of mean costs so one cheap week cannot dominate.
 - **Key lesson from the first run:** charging at full rate can create a new demand peak, so a controller can lower the energy bill and still lose on the demand charge. This is the trade-off the RL agent has to learn.
+
+## controllers/qlearning.py and scripts/train_qlearning.py (Phase 4)
+- **What it does:** tabular Q-learning. It keeps a table with one row per discretized situation and one column per action, and learns how good each action is by trial and error.
+- **State (3,600 situations):** battery level (10 bins) x hour of day (24) x demand level (5 quantile bins from TRAIN demand) x tariff period (3).
+- **Learning rule:** after each hour, nudge the table entry toward "reward just received + gamma x best value of the next situation". Alpha is the step size and gamma is how much future savings count.
+- **Exploration:** epsilon-greedy. With probability epsilon take a random action, otherwise the best known one. Epsilon decays from 1.0 to 0.05, so the agent explores early and exploits late.
+- **Two fixes that mattered:** (1) the first time an action is tried, its value is set to what was observed, not blended with a made-up zero; (2) untried actions are ignored when choosing. Otherwise a zero (which looks great when all rewards are negative) beats every action that was actually tried.
+- **Reward fix:** the plan's peak penalty was too noisy to learn from. We charge only the peak the battery adds on top of the home's own demand peak. This gives the same best policy, since the home's own peak does not depend on actions, with much less noise. The plan's version is kept as the `plan_reward` ablation.
+- **Violation penalty:** at 1 point, the agent happily broke battery limits whenever a half-delivered discharge shaved a peak. At 10 points it stops.
+- **Evaluation:** greedy policy (no exploration) on validation weeks the agent never trained on, 3 seeds, against the baselines on the same weeks.
+- **Honest outcome:** Q-learning beats doing nothing but loses clearly to the simple greedy rule (see README). The sweeps in Phase 5 explore why.

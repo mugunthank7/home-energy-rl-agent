@@ -149,3 +149,47 @@ def test_forecast_option_changes_observation_size():
     env = EnergyEnv(make_demand(), cfg, load_tariff_config(), seed=0)
     base = make_env()
     assert env.observation_space.shape[0] == base.observation_space.shape[0] + 3
+
+
+def test_excess_peak_term_sums_to_peak_added_by_battery():
+    """Summed over an episode, the 'excess' peak cost equals (import peak - demand peak)."""
+    cfg = load_env_config()
+    cfg["reward"].update(peak_term="excess", w_peak=1.0, w_viol=0.0, w_cycle=0.0)
+    env = EnergyEnv(make_demand(), cfg, load_tariff_config(), seed=0)
+    rng = np.random.default_rng(3)
+    env.reset(seed=1)
+    done, total_peak_cost = False, 0.0
+    while not done:
+        _, reward, _, done, info = env.step(int(rng.integers(5)))
+        total_peak_cost += -reward - info["cost"]       # what is left after energy cost
+    assert total_peak_cost == pytest.approx(env.peak - env.demand_peak)
+
+
+def test_excess_peak_term_is_zero_for_an_idle_battery():
+    cfg = load_env_config()
+    cfg["reward"].update(peak_term="excess", w_peak=5.0)
+    env = EnergyEnv(make_demand(), cfg, load_tariff_config(), seed=0)
+    env.reset(seed=1)
+    done = False
+    while not done:
+        _, reward, _, done, info = env.step(IDLE)
+        assert reward == pytest.approx(-info["cost"])
+
+
+def test_increase_peak_term_matches_plan_formula():
+    cfg = load_env_config()
+    cfg["reward"].update(peak_term="increase", w_peak=1.0, w_viol=0.0, w_cycle=0.0)
+    env = EnergyEnv(make_demand(), cfg, load_tariff_config(), seed=0)
+    env.reset(seed=1)
+    done, total_peak_cost = False, 0.0
+    while not done:
+        _, reward, _, done, info = env.step(IDLE)
+        total_peak_cost += -reward - info["cost"]
+    assert total_peak_cost == pytest.approx(env.peak)    # idle: peak rises from 0 to the max
+
+
+def test_unknown_peak_term_is_rejected():
+    cfg = load_env_config()
+    cfg["reward"]["peak_term"] = "nonsense"
+    with pytest.raises(ValueError):
+        EnergyEnv(make_demand(), cfg, load_tariff_config())
