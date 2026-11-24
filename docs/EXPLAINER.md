@@ -12,3 +12,29 @@ Plain-English notes so each module can be explained on video. One entry per modu
 - **Held-out weeks:** a winter week (Jan 18-24, 2010) and a summer week (Jul 5-11, 2010) are kept for the generalization test. Jan 12-14 have long gaps, and August is avoided because the household was away.
 - **Episode starts:** because dropped days leave holes, `valid_episode_starts` only allows 7-day windows that are fully contiguous.
 - **Why it matters:** the RL agent trains on the train split only. Everything else (battery, tariff) is simulated on top of this real demand.
+
+## tariff.py (Phase 2)
+- **What it does:** gives each hour a price, using a SIMULATED time-of-use tariff (not a real utility).
+- **Three periods:** off-peak 22:00-06:00 (cheapest), on-peak 16:00-21:00 on weekdays (most expensive), and mid-peak for everything else.
+- **Codes:** periods are numbers (0 off, 1 mid, 2 on) so controllers and the Q-table can use them directly.
+- **Demand charge:** a price per kW on the single highest hourly grid import in the episode. It pushes the agent to flatten peaks, not just shift energy.
+- **Config:** all prices and hours live in `configs/tariff.yaml`, so changing the tariff needs no code change.
+
+## battery.py (Phase 2)
+- **What it does:** the SIMULATED battery: 10 kWh, 3 kW max, 90% round-trip efficiency, SOC kept between 10% and 100%.
+- **Efficiency:** split evenly between charging and discharging (square root each way), so a charge-then-discharge cycle loses about 10% of the energy.
+- **Power is measured at the wall (AC side):** charging 2 kW stores 2 x sqrt(0.9) kWh; delivering 2 kW removes 2 / sqrt(0.9) kWh from storage.
+- **Violations:** asking to charge a full battery or discharge an empty one is clipped to what is possible and flagged as a violation, which the reward penalizes.
+- **No export:** the battery can never discharge more than the home is using. That excess is just recorded as "curtailed" and is not penalized.
+- **Why it matters:** these rules make the problem realistic. The agent cannot cheat physics, and efficiency losses make useless cycling cost money.
+
+## env.py (Phase 2)
+- **What it does:** a Gymnasium environment. Each step is one hour and each episode is 7 days (168 steps), starting at a random valid point in the chosen split.
+- **Real vs simulated:** demand is REAL data; battery and tariff are SIMULATED.
+- **Observation:** hour (as sin/cos), day of week, battery SOC, current demand, tariff period, and the last 3 hours of demand. An optional 3-hour "perfect" forecast exists for experiments only.
+- **Actions:** 5 choices: discharge high, discharge low, idle, charge low, charge high (fractions of the 3 kW limit).
+- **Grid import:** demand + charging - discharging. This is what the home buys.
+- **Reward:** minus the energy cost, minus a penalty when the episode peak rises, minus a penalty for violations, minus a small penalty for battery throughput (wear).
+- **Logging:** every step returns an info dict (demand, action, SOC, grid import, price, cost, peak, violation). All the plots are drawn from this.
+- **Episode summary:** at the end it reports energy cost, demand charge, total cost, peak, violations, and equivalent full cycles.
+- **Tests:** energy conservation, SOC always in bounds, an idle battery equals demand times price, and identical results for the same seed.
