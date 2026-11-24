@@ -29,7 +29,7 @@ rule-based, greedy threshold, Q-learning), seven parameter sweeps, and a held-ou
 The main finding is a negative one, and we report it plainly: in this simulation, Q-learning with a
 discretized state beats doing nothing only by a small margin and is clearly worse than a simple greedy
 price-threshold rule. An optimal-control oracle with perfect foresight shows that much more is possible
-(about 36% savings on the test year), so the shortfall is in the learner and its inputs, not in the problem.
+(about 36% savings on the test year, and 27.5% even when limited to the same 5 power levels), so the shortfall is in the learner and its inputs, not in the problem.
 
 ## 2. Data and preprocessing
 
@@ -118,7 +118,7 @@ terminal-adjusted cost that values leftover energy at the off-peak price of buyi
 stored kWh). It changes no ranking (section 6.3 and `docs/GENERALIZATION.md`), so the plain bill stays the
 headline, with the adjusted figure as a robustness check.
 
-**Tests** (`tests/`, 85 passing). Energy conservation, charge level always in bounds, an idle battery
+**Tests** (`tests/`, 93 passing). Energy conservation, charge level always in bounds, an idle battery
 equals demand times price, identical results under the same seed, the equivalence of the reward variants,
 and the data-cleaning rules.
 
@@ -158,6 +158,14 @@ made on validation data only.
    because it needs the future. Tests check that its plans obey the constraints, replay in the simulator's
    battery model with the same costs, and never cost more than any baseline on the same weeks. A second
    version also pays for stored energy it uses up, for the terminal-adjusted comparison.
+
+6. **Oracle restricted to the 5 power levels.** The same perfect-foresight problem, but each hour it must pick one
+   of the environment's 5 actions, solved as a mixed-integer program. It only allows plans a controller can follow
+   without breaking a limit, and replaying its plans through the real environment reproduces the predicted
+   cost exactly with zero violations. It separates the cost of the limited action set from the cost of not
+   knowing the future. The solver returns the best plan found and a proven bound; on the test year they differ by
+   1.3 points of savings (27.5% and 28.7%), and half of the test weeks solved to the 0.2% tolerance within the
+   30-second limit per week.
 
 Deep RL (DQN, PPO) is not built.
 
@@ -233,23 +241,26 @@ reward was changed.
 | Q-learning, plan settings | 47.53 ± 0.98 | -4.9 ± 2.2% | 4.16 ± 0.15 | 0.02 | 4.82 ± 0.24 |
 | Q-learning, tuned | 46.06 ± 0.76 | -1.7 ± 1.7% | 3.99 ± 0.16 | 0.02 | 5.11 ± 0.16 |
 | Q-learning, selected | 44.61 ± 0.62 | 1.5 ± 1.4% | 3.47 ± 0.07 | 0.00 | 1.84 ± 0.52 |
-| Oracle (upper bound) | 29.17 | 35.6% | 1.55 | 0 | 5.24 |
+| Oracle, 5 power levels | 32.86 | 27.5% | 2.32 | 0 | 5.49 |
+| Oracle, continuous power | 29.17 | 35.6% | 1.55 | 0 | 5.24 |
 
 *Table 4 (`reports/tables/final_metrics_test.md`; figure `reports/figures/controllers_test.png`). Error
 figures are std over 5 training seeds.*
 
-| Controller | Share of the oracle's savings | Total savings, terminal-adjusted |
-|---|---|---|
-| Rule-based | -13.7% | -4.1% |
-| Greedy threshold | 21.9% | 8.5% |
-| Q-learning, plan settings | -13.8 ± 6.1% | -4.7 ± 2.2% |
-| Q-learning, tuned | -4.7 ± 4.7% | -1.7 ± 1.7% |
-| Q-learning, selected | 4.3 ± 3.8% | 1.3 ± 1.4% |
-| Oracle | 100% | 34.9% |
+| Controller | Share of the continuous oracle's savings | Share of the 5-level oracle's savings | Total savings, terminal-adjusted |
+|---|---|---|---|
+| Rule-based | -13.7% | -17.7% | -4.1% |
+| Greedy threshold | 21.9% | 28.4% | 8.5% |
+| Q-learning, plan settings | -13.8 ± 6.1% | -17.9 ± 7.9% | -4.7 ± 2.2% |
+| Q-learning, tuned | -4.7 ± 4.7% | -6.0 ± 6.1% | -1.7 ± 1.7% |
+| Q-learning, selected | 4.3 ± 3.8% | 5.6 ± 5.0% | 1.3 ± 1.4% |
+| Oracle, 5 power levels | 77.1% | 100% | 27.0% |
+| Oracle, continuous power | 100% | 129.7% | 34.9% |
 
-*Table 5. Test split. The share of the oracle is savings divided by the oracle's savings (plain bill).
-Adjusted savings value leftover battery energy; the adjusted oracle is a separate linear program, so it is
-still an upper bound under that metric.*
+*Table 5. Test split. A share is a controller's savings divided by the oracle's savings (plain bill).
+Adjusted savings value leftover battery energy; each adjusted oracle is a separate optimization, so it is
+still a bound under that metric. The 5-level oracle's savings are the best plan found; the proven ceiling is
+28.7%, so its shares could be overstated by up to about 5% in relative terms.*
 
 The best learned controller saves about $0.70 a week, roughly one standard deviation from zero. The greedy
 rule saves about $3.53 a week, and the oracle $16.14 a week.
@@ -286,9 +297,12 @@ energy cost by 23.6% (about $6.60 a week). It does this by keeping grid import a
 across the summer test day (`reports/figures/representative_days.png`). The greedy rule captures 21.9% of the
 oracle's saving and the best Q-learner 4.3 ± 3.8%. The learners and the greedy rule keep the weekly peak at
 3.5 to 4.2 kW, which is the part of the problem they miss, in line with the sweep findings above. Even in the
-held-out summer week, where full-power charging backfires, the oracle saves 38.5%. Part of the gap to the
-oracle is not learning but the action set (5 power levels against continuous power) and the missing
-foresight; this project did not separate those.
+held-out summer week, where full-power charging backfires, the oracle saves 38.5%. The restricted
+oracle separates the two causes of the gap. Limiting power to the environment's 5 levels costs about 8 points
+of savings (35.6% down to 27.5%), roughly a quarter of the 34 points between the best learner and the
+continuous oracle. The 5-level oracle still saves 27.5% and keeps the peak at 2.32 kW, so the learners reach
+only about 5% of what their own action set allows, and the rest of the gap is the cost of learning without
+foresight and without a view of the peak.
 
 **Generalization.** Every controller loses ground from validation to test, including the two that never
 learn (rule-based 0.0% to -4.9%, greedy 9.6% to 7.8%). Part of the drop is therefore a property of the data,
@@ -321,9 +335,10 @@ grid looks noisy with no clear daily pattern.
   The test numbers are unbiased but come from one run of the protocol.
 - The rule-based and greedy controllers were not tuned, so the comparison understates how good tuned rules
   could be.
-- The oracle uses continuous power and perfect foresight, so it is a loose bound for 5-level controllers that
-  must act without knowing the future. We did not compute a bound restricted to the 5 power levels, and deep
-  RL (DQN, PPO) is not built.
+- Both oracles assume exact knowledge of the whole week, so no real controller can reach 100%. The 5-level
+  oracle is the best plan the solver found within 30 seconds per week (half of the test weeks did not reach the
+  0.2% target); its proven ceiling is 1.3 points higher, so shares against it carry that uncertainty. It also
+  only allows violation-free plans. Deep RL (DQN, PPO) is not built.
 - The environment ignores energy left in the battery at the end of a week. The terminal-adjusted check shifts
   savings by under one point and changes no ranking, but it is a choice of replacement price (off-peak).
 
@@ -353,10 +368,9 @@ power.
 Against the oracle, the best learner captures about 4% of the achievable saving and the greedy rule about
 22%.
 
-Future work, in order of expected value: (1) compute a bound restricted to the 5 power levels, to separate
-the cost of the action set from the cost of missing foresight; (2) add the highest import so far to the learning state in a way
-the table can use, or use a function approximator (DQN, PPO) that can handle it; (3) tune the simple rules
-fairly; (4) test other tariffs, power limits and years; (5) add the language-model layer from section 8.
+Future work, in order of expected value: (1) add the highest import so far to the learning state in a way
+the table can use, or use a function approximator (DQN, PPO) that can handle it; (2) tune the simple rules
+fairly; (3) test other tariffs, power limits and years; (4) add the language-model layer from section 8.
 
 ---
 
@@ -372,6 +386,7 @@ uv run python scripts/run_experiment.py all --workers 8
 uv run python scripts/run_final.py
 uv sync --extra oracle        # cvxpy, needed for the oracle
 uv run python scripts/run_oracle.py
+uv run python scripts/run_oracle_discrete.py   # about 15 minutes
 uv run python scripts/make_report.py
 uv run pytest
 ```

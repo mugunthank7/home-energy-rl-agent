@@ -997,6 +997,8 @@ agent = [
 ]
 oracle = [
     { name = "cvxpy" },
+    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 tier1 = [
     { name = "cvxpy" },
@@ -1027,6 +1029,7 @@ requires-dist = [
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "requests" },
+    { name = "scipy", marker = "extra == 'oracle'" },
     { name = "stable-baselines3", marker = "extra == 'tier1'" },
     { name = "streamlit", marker = "extra == 'agent'" },
     { name = "torch", marker = "extra == 'tier1'" },

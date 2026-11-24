@@ -82,7 +82,8 @@ week. So in this simulation, Q-learning does not beat the simple greedy rule."
 "Now the oracle. With perfect foresight it saves 35.6 percent, about 16 dollars a week. So there is a lot of
 room. The greedy rule captures about a fifth of that, my best learner about 4 percent. About 59 percent of the
 oracle's saving is flattening the weekly peak: it cuts the peak from 3.45 to 1.55 kilowatts. The other 41
-percent is moving energy to cheap hours. That matches what I found in the sweeps: the learners miss the peak."
+percent is moving energy to cheap hours. That matches what I found in the sweeps: the learners miss the peak. And limiting the oracle to my own five
+power levels still saves 27.5 percent. So most of the gap is learning, not the action set."
 
 "Generalization: every controller lost ground from 2009 to 2010, including the ones that never learn, partly
 because peak demand fell from 4.3 to 3.5 kilowatts. Summer was hardest: the summer week's whole peak is
@@ -143,8 +144,10 @@ the repository. Thanks for watching."
 - Is +1.5% a real win? (It is about one standard deviation from zero. Say so.)
 - Why July for summer and not August? (The household was away for much of August.)
 - Why is the coarse grid best? (Sparse visits for the fine grid, and the coarse policy is conservative.)
-- How good is the oracle as a benchmark? (It uses continuous power and perfect foresight, so it is a loose bound
-  for 5-level controllers. I did not separate the effect of the action set from the effect of foresight.)
+- How good is the oracle as a benchmark? (Both oracles know the whole week. I built a second one limited to my five
+  power levels: it saves 27.5% against 35.6% continuous, so the action set explains about a quarter of the gap
+  to my best learner. The solver hit its 30-second limit on half the test weeks, so I report the best plan found
+  and a proven ceiling 1.3 points higher.)
 - Does leftover battery energy change anything? (I checked: valuing it at the off-peak price shifts savings by
   under one point and changes no ranking. Greedy 7.8 to 8.5 percent, my best learner 1.5 to 1.3.)
 - What is still missing? (Deep RL and the language-model layer.)

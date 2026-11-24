@@ -95,3 +95,11 @@ Plain-English notes so each module can be explained on video. One entry per modu
 - **What it taught us:** about 59% of the oracle's saving is flattening the weekly peak and 41% is moving energy to cheap hours. The learners and the greedy rule mostly miss the peak part.
 - **Leftover energy:** the oracle also comes in an adjusted version that pays for battery energy it uses up, so the comparison stays fair when we credit or charge for energy left in the battery.
 - **Limit:** it uses smooth power levels, while the learned controllers pick from 5 levels, so part of the gap to the oracle is the action set, not just the missing foresight.
+
+## controllers/discrete_oracle.py and scripts/run_oracle_discrete.py (Phase 7)
+- **What it is:** the same best-case reference as the continuous oracle, but forced to use only the 5 power levels the real controllers can use. It separates "the action set is limited" from "we do not know the future".
+- **How:** a mixed-integer program. Each hour it must choose exactly one of the 5 actions. The rules copy the simulator: stored energy with efficiency and limits, discharge cut to the current demand, and the demand charge on the weekly peak.
+- **No violations allowed:** it never asks the battery for something it cannot give, so its plans are ones a well-behaved controller could follow.
+- **How we know it is right:** we replay each plan through the real environment. The cost matches the solver's to four decimals and there are no violations. Tests also check that small changes to a plan never make it cheaper.
+- **Two numbers per week:** the best plan found (achievable) and a proven bound the true best cannot beat. Some weeks hit the time limit, so we report both. On the test year they differ by 1.3 points of savings.
+- **What it taught us:** 5 levels cost about 8 points of savings (35.6% down to 27.5%), roughly a quarter of the distance from my best learner to the continuous oracle. Even so, a 5-level plan with foresight saves 27.5%, so the learners miss most of what their own actions allow.

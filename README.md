@@ -14,6 +14,7 @@ uv run python scripts/build_hourly.py
 uv run python scripts/make_eda.py
 uv sync --extra oracle        # optional: cvxpy for the oracle upper bound
 uv run python scripts/run_oracle.py
+uv run python scripts/run_oracle_discrete.py    # about 15 minutes
 uv run pytest
 ```
 
@@ -68,10 +69,11 @@ The 2010 split was used only after the Q-learning configs were fixed on validati
 | Q-learning, plan settings | 47.53 ± 0.98 | -4.9 ± 2.2% | -13.8 ± 6.1% | 4.16 ± 0.15 |
 | Q-learning, tuned | 46.06 ± 0.76 | -1.7 ± 1.7% | -4.7 ± 4.7% | 3.99 ± 0.16 |
 | Q-learning, selected (coarse grid) | 44.61 ± 0.62 | +1.5 ± 1.4% | 4.3 ± 3.8% | 3.47 ± 0.07 |
-| Oracle (perfect foresight, upper bound) | 29.17 | +35.6% | 100% | 1.55 |
+| Oracle, 5 power levels (best plan found) | 32.86 | +27.5% | 77.1% | 2.32 |
+| Oracle, continuous power (perfect foresight) | 29.17 | +35.6% | 100% | 1.55 |
 
 The best learned controller is only slightly better than doing nothing and clearly worse than the simple greedy rule.
 Every controller loses ground from 2009 to 2010, and summer weeks are hardest for controllers that charge at full power
-(the summer week's whole peak is below the 3 kW charge power). The oracle is a linear program that knows the whole week of demand and prices in advance and uses continuous power, so it is an upper bound, not a deployable controller: about 59% of its saving comes from flattening the weekly peak (3.45 kW down to 1.55 kW) and 41% from shifting energy to cheap hours. The greedy rule captures about a fifth of it and the best Q-learner about 4%. Part of that gap is the 5-level action set, which was not separated from the effect of foresight. The environment ignores the energy left in the battery at the end of a week, so a terminal-adjusted version is also reported in `docs/GENERALIZATION.md`; it changes no ranking (best Q-learner +1.3 ± 1.4%, greedy +8.5%, oracle +34.9%). Oracle scores are re-created with `uv sync --extra oracle` and `uv run python scripts/run_oracle.py`.
+(the summer week's whole peak is below the 3 kW charge power). The oracle is a linear program that knows the whole week of demand and prices in advance and uses continuous power, so it is an upper bound, not a deployable controller: about 59% of its saving comes from flattening the weekly peak (3.45 kW down to 1.55 kW) and 41% from shifting energy to cheap hours. The greedy rule captures about a fifth of it and the best Q-learner about 4%. A second oracle restricted to the environment's 5 power levels (a mixed-integer program) saves 27.5% on test (proven ceiling 28.7%), so the 5-level action set explains about a quarter of the distance between the best learner and the continuous oracle, and perfect foresight with 5 levels would still save far more than any controller built here. The greedy rule captures 28.4% of the 5-level oracle's saving and the best Q-learner 5.6 ± 5.0%. The environment ignores the energy left in the battery at the end of a week, so a terminal-adjusted version is also reported in `docs/GENERALIZATION.md`; it changes no ranking (best Q-learner +1.3 ± 1.4%, greedy +8.5%, oracle +34.9%). Oracle scores are re-created with `uv sync --extra oracle` and `uv run python scripts/run_oracle.py`.
 
 Figures: `reports/figures/controllers_test.png`, `representative_days.png`, `policy_heatmap_*.png`. The settings used are recorded in `reports/tables/parameter_record.md`.

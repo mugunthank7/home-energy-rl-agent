@@ -17,17 +17,19 @@ from home_energy_rl_agent.controllers.qlearning import QLearningAgent
 from home_energy_rl_agent.final_eval import FINAL_DIR
 from home_energy_rl_agent.reporting import FIG_DIR, TABLE_DIR
 
-ORDER = ["no_battery", "rule_based", "greedy_threshold", "q_baseline", "q_tuned", "q_selected", "oracle"]
+ORDER = ["no_battery", "rule_based", "greedy_threshold", "q_baseline", "q_tuned", "q_selected",
+         "oracle_discrete", "oracle"]
 LABEL = {
     "no_battery": "No battery", "rule_based": "Rule-based", "greedy_threshold": "Greedy threshold",
     "q_baseline": "Q-learning (plan settings)", "q_tuned": "Q-learning (tuned)",
     "q_selected": "Q-learning (selected: coarse grid)",
+    "oracle_discrete": "Oracle, 5 power levels (best plan found)",
     "oracle": "Oracle (perfect foresight, upper bound)",
 }
 SHORT = {"no_battery": "No battery", "rule_based": "Rule-based", "greedy_threshold": "Greedy threshold",
          "q_baseline": "Q: plan settings", "q_tuned": "Q: tuned", "q_selected": "Q: coarse grid",
-         "oracle": "Oracle (bound)"}
-COLORS = dict(zip(ORDER, ["#888888", "#d95f02", "#1b9e77", "#7570b3", "#e7298a", "#66a61e", "#000000"], strict=True))
+         "oracle_discrete": "Oracle 5-level", "oracle": "Oracle (continuous)"}
+COLORS = dict(zip(ORDER, ["#888888", "#d95f02", "#1b9e77", "#7570b3", "#e7298a", "#66a61e", "#6a6a6a", "#000000"], strict=True))
 SPLIT_TITLE = {
     "validation": "Validation (2009)", "test": "Test (2010)",
     "test_winter_week": "Winter week (Jan 18-24, 2010)", "test_summer_week": "Summer week (Jul 5-11, 2010)",
@@ -45,9 +47,9 @@ METRICS = [
 def load_records(path: Path = FINAL_DIR / "records.json") -> dict:
     """The final comparison records, plus the oracle's if scripts/run_oracle.py has been run."""
     rec = json.loads(path.read_text())
-    oracle = path.parent / "oracle.json"
-    if oracle.exists():
-        rec["records"] += json.loads(oracle.read_text())["records"]
+    for extra in ("oracle.json", "oracle_discrete.json"):
+        if (path.parent / extra).exists():
+            rec["records"] += json.loads((path.parent / extra).read_text())["records"]
     return rec
 
 
@@ -68,16 +70,19 @@ def train_time(records: list[dict], controller: str) -> float | None:
 
 
 # --- Savings, with and without valuing the energy left in the battery, and the share of the oracle ---
+ADJ_NAME = {"oracle": "oracle_adj", "oracle_discrete": "oracle_discrete_adj"}   # variants for the adjusted metric
+
+
 def savings_values(records: list[dict], split: str, controller: str, adjusted: bool) -> list[float]:
     """Total-savings % per seed (one value for deterministic controllers)."""
     key = "savings_total_adj_pct" if adjusted else "savings_total_pct"
-    name = "oracle_adj" if controller == "oracle" and adjusted else controller
+    name = ADJ_NAME.get(controller, controller) if adjusted else controller
     return [r["summary"][key] for r in records if r["split"] == split and r["controller"] == name]
 
 
-def pct_of_oracle(records: list[dict], split: str, controller: str, adjusted: bool):
-    """(mean, std) of savings as a percentage of the oracle's savings, or None if unavailable."""
-    ref = savings_values(records, split, "oracle", adjusted)
+def pct_of_oracle(records: list[dict], split: str, controller: str, adjusted: bool, reference: str = "oracle"):
+    """(mean, std) of savings as a percentage of a reference oracle's savings, or None if unavailable."""
+    ref = savings_values(records, split, reference, adjusted)
     if not ref or abs(ref[0]) < 1e-9:
         return None
     vals = [100 * v / ref[0] for v in savings_values(records, split, controller, adjusted)]
@@ -100,9 +105,14 @@ def metrics_table(rec: dict, split: str) -> pd.DataFrame:
         row["total savings, terminal-adjusted %"] = _fmt(c, float(np.mean(adj)), float(np.std(adj)))
         t = train_time(rec["records"], c)
         row["train time (s)"] = f"{t:.1f}" if t else "0 (no training)"
-        for label, adjusted in [("% of oracle savings", False), ("% of oracle (terminal-adjusted)", True)]:
-            share = pct_of_oracle(rec["records"], split, c, adjusted)
-            row[label] = "n/a (run scripts/run_oracle.py)" if share is None else _fmt(c, *share, digits=1)
+        for label, adjusted, ref, hint in [
+            ("% of oracle savings", False, "oracle", "scripts/run_oracle.py"),
+            ("% of oracle (terminal-adjusted)", True, "oracle", "scripts/run_oracle.py"),
+            ("% of 5-level oracle savings", False, "oracle_discrete", "scripts/run_oracle_discrete.py"),
+            ("% of 5-level oracle (terminal-adjusted)", True, "oracle_discrete", "scripts/run_oracle_discrete.py"),
+        ]:
+            share = pct_of_oracle(rec["records"], split, c, adjusted, ref)
+            row[label] = f"n/a (run {hint})" if share is None else _fmt(c, *share, digits=1)
         rows.append(row)
     return pd.DataFrame(rows)
 
@@ -134,15 +144,15 @@ def generalization_table(rec: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def oracle_share_table(rec: dict, adjusted: bool = False) -> pd.DataFrame:
-    """Savings as a % of the oracle's savings, for every split."""
+def oracle_share_table(rec: dict, adjusted: bool = False, reference: str = "oracle") -> pd.DataFrame:
+    """Savings as a % of a reference oracle's savings, for every split."""
     splits = ["validation", "test", "test_winter_week", "test_summer_week",
               "test_winter_season", "test_summer_season"]
     rows = []
     for c in controllers_in(rec["records"]):
         row = {"controller": LABEL[c]}
         for sp in splits:
-            share = pct_of_oracle(rec["records"], sp, c, adjusted)
+            share = pct_of_oracle(rec["records"], sp, c, adjusted, reference)
             row[SPLIT_TITLE[sp]] = "n/a" if share is None else _fmt(c, *share, digits=1)
         rows.append(row)
     return pd.DataFrame(rows)
@@ -359,11 +369,14 @@ def report_final() -> None:
     gen.to_csv(TABLE_DIR / "generalization.csv", index=False)
     stats = split_stats_table(rec)
     share, share_adj = oracle_share_table(rec), oracle_share_table(rec, adjusted=True)
+    share5 = oracle_share_table(rec, reference="oracle_discrete")
     share.to_csv(TABLE_DIR / "oracle_share.csv", index=False)
+    share5.to_csv(TABLE_DIR / "oracle_share_5level.csv", index=False)
     (TABLE_DIR / "generalization.md").write_text(
         df_to_markdown(gen, "Total savings vs no battery (%) by split", note)
         + "\n" + df_to_markdown(share, "Savings as a % of the oracle's savings, by split", note)
         + "\n" + df_to_markdown(share_adj, "Same, with leftover battery energy valued (terminal-adjusted)", note)
+        + "\n" + df_to_markdown(share5, "Savings as a % of the 5-power-level oracle's savings, by split", note)
         + "\n" + df_to_markdown(stats, "Demand statistics by split (REAL data)"))
     for split in ["validation", "test"]:
         plot_controller_bars(rec, split, FIG_DIR / f"controllers_{split}.png")

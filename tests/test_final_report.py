@@ -36,6 +36,7 @@ def rec():
         for seed, sav in [(1, 2.0), (2, 4.0)]:
             records += [fake_record(sp, f"q_{n}", seed, sav) for n in ("baseline", "tuned", "selected")]
         records += [fake_record(sp, "oracle", None, 40.0), fake_record(sp, "oracle_adj", None, 40.0)]
+        records += [fake_record(sp, "oracle_discrete", None, 30.0), fake_record(sp, "oracle_discrete_adj", None, 30.0)]
     stats = {sp: {"hours": 100, "mean_kw": 1.2, "p95_kw": 3.0, "max_kw": 6.0, "mean_weekly_peak_kw": 4.0}
              for sp in ["train", "validation", "test"]}
     return {"seeds": [1, 2], "records": records, "split_stats": stats}
@@ -137,7 +138,20 @@ def test_table_without_oracle_says_how_to_get_it(rec):
     rec = {**rec, "records": [r for r in rec["records"] if not r["controller"].startswith("oracle")]}
     df = fr.metrics_table(rec, "test")
     assert "run_oracle" in df.iloc[0]["% of oracle savings"]
-    assert list(df["controller"]) == [fr.LABEL[c] for c in fr.ORDER if c != "oracle"]
+    assert list(df["controller"]) == [fr.LABEL[c] for c in fr.ORDER if not c.startswith("oracle")]
+
+
+def test_five_level_oracle_shares(rec):
+    df = fr.metrics_table(rec, "test")
+    q = df[df["controller"] == fr.LABEL["q_selected"]].iloc[0]
+    assert q["% of 5-level oracle savings"] == f"{100 * 3.0 / 30.0:.1f} ± {100 * 1.0 / 30.0:.1f}"
+    greedy = df[df["controller"] == fr.LABEL["greedy_threshold"]].iloc[0]
+    assert greedy["% of 5-level oracle savings"] == "30.0"                    # 9 / 30
+    cont = df[df["controller"] == fr.LABEL["oracle"]].iloc[0]
+    assert cont["% of 5-level oracle savings"] == f"{100 * 40 / 30:.1f}"       # continuous beats 5-level
+    five = df[df["controller"] == fr.LABEL["oracle_discrete"]].iloc[0]
+    assert five["% of oracle savings"] == f"{100 * 30 / 40:.1f}"               # share of the continuous bound
+    assert fr.oracle_share_table(rec, reference="oracle_discrete").shape[0] == len(fr.ORDER)
 
 
 def test_oracle_share_table_covers_every_split(rec):

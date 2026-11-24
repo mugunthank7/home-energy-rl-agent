@@ -37,4 +37,10 @@ The `tuned` hyperparameters (alpha 0.02, gamma 0.9) were chosen from single-seed
 - The oracle sees the same weeks as every other controller (same start selection) and is evaluated with the same summary function.
 - The environment's reward and bill ignore energy left in the battery at the end of an episode. As a robustness check, a terminal-adjusted cost adds `(start energy - end energy) x (off-peak price / charging efficiency)`. A second LP (`oracle_adj`) optimizes that adjusted objective. The plain metric stays the headline; both are reported.
 
+## Oracle restricted to 5 power levels
+- A mixed-integer program per 7-day episode (HiGHS through scipy): one binary per hour and action, stored energy that follows the simulator's efficiency and bounds, discharge cut to the current demand, and a peak variable priced at the demand charge.
+- It only allows plans a controller can follow with no limit violation: a discharge request must be coverable by the stored energy and a charge request must fit in the free capacity, exactly as the battery model flags violations. It is therefore a bound for violation-free 5-level controllers. A controller that violates limits gets partial charges or discharges outside this set, so it could in principle beat the bound; none of the controllers evaluated here came close.
+- The solver returns the best plan found (its cost is achievable, replayed through the real environment with identical cost and zero violations) and a dual bound (a proven lower bound on cost). Each week has a 30-second limit and a 0.2% relative gap target; weeks that hit the limit still return their best plan and bound. Both are reported.
+- Variants: plain bill (`oracle_discrete`) and with leftover battery energy valued (`oracle_discrete_adj`).
+
 (Further details are filled in as each phase lands.)

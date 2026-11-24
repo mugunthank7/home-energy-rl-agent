@@ -130,10 +130,45 @@ earlier finding that the peak is what the other controllers get wrong: the greed
 the peak at 3.5 to 4.2 kW.
 
 **Caveats on the bound.**
-- It uses continuous power, while every learned controller has 5 power levels, so part of the gap is the
-  action set and part is the missing foresight. This project did not separate the two.
+- It uses continuous power, while every learned controller has 5 power levels. The next section separates the
+  effect of the action set from the effect of foresight.
 - It assumes exact knowledge of the whole week. No real controller can reach 100%.
 - The shares for Q-learning have wide error bars (a few points) because the savings themselves are small.
+
+## The oracle restricted to the 5 power levels
+
+The continuous oracle can pick any power. Every controller here picks one of 5 levels (discharge or charge at
+full or half power, or idle). `controllers/discrete_oracle.py` solves the same perfect-foresight problem with
+that restriction as a mixed-integer program: each hour it must choose one of the 5 actions, modelled exactly as
+the environment treats them (a discharge is cut to the current demand; a request the battery cannot cover or
+fit counts as a violation, so it is excluded). Replaying its plans through the real environment reproduces the
+predicted cost to four decimals with zero violations, and tests check this and that small changes to a plan
+never make it cheaper.
+
+| Test (2010, 100 weeks) | Continuous oracle | 5-level oracle | Greedy threshold | Q-learning, selected |
+|---|---|---|---|---|
+| Total cost ($/week) | 29.17 | 32.86 | 41.78 | 44.61 ± 0.62 |
+| Total savings | +35.6% | +27.5% (proven ceiling 28.7%) | +7.8% | +1.5 ± 1.4% |
+| Share of the 5-level oracle's savings | 129.7% | 100% | 28.4% | 5.6 ± 5.0% |
+| Weekly peak (kW) | 1.55 | 2.32 | 3.78 | 3.47 ± 0.07 |
+| Full cycles per week | 5.2 | 5.5 | 2.9 | 1.8 ± 0.5 |
+
+- **The action set costs about 8 points of savings** (35.6% to 27.5%, or 6.9 points if the true 5-level optimum
+  is at its ceiling). That is roughly a quarter (24%) of the 34.1 points between the best learner and the
+  continuous oracle. The other roughly three quarters is what learning with no foresight costs.
+- **Even with 5 levels, a lot is possible.** The 5-level oracle saves 27.5% against the greedy rule's 7.8% and
+  the best learner's 1.5%. In the validation split the figures are 29.7%, 9.6% and 2.7%. So the best learned
+  controller reaches only about 5% of what its own action set allows.
+- **It still shaves the peak** (3.45 kW to 2.32 kW), so the peak part of the problem is largely reachable with
+  5 levels, which is the part the learners and the greedy rule miss.
+- **Solution quality.** The plan is the best the solver found, so its savings are a lower estimate of the 5-level
+  optimum; the proven ceiling is the solver's dual bound. On test the two differ by 1.3 points (27.5% and 28.7%).
+  Within the 30-second limit per week, 50% of the test weeks solved to the 0.2% tolerance (76% on validation); the
+  rest are within the plan-to-ceiling range above. The shares quoted are against the plan found, so they could be
+  overstated by up to about 5% in relative terms. The same MILP with leftover battery energy valued gives 27.0%
+  on test, consistent with the continuous case.
+- Per split (plan found): validation 29.7%, test 27.5%, winter week 28.4%, summer week 29.2%. All shares by
+  split are in `reports/tables/generalization.md`.
 
 ## Leftover battery energy (terminal value)
 
