@@ -1,0 +1,14 @@
+# REAL data pipeline settings (UCI household power, one French household).
+raw_file: data/raw/household_power_consumption.txt
+processed_file: data/processed/hourly.parquet
+cleaning_log_file: data/processed/cleaning_log.json
+max_fill_gap_hours: 3        # forward-fill gaps up to this long; longer gaps drop the day
+splits:                      # by calendar year, never shuffled
+  train: [2007, 2008]
+  validation: [2009]
+  test: [2010]
+# Held-out week-long windows (inclusive dates) from 2010 for the generalization test.
+# July is used for summer because the household was away for much of August.
+test_windows:
+  winter: ["2010-01-18", "2010-01-24"]   # Jan 12-14 have long gaps, so avoid that week
+  summer: ["2010-07-05", "2010-07-11"]
