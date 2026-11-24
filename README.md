@@ -4,7 +4,7 @@ Reinforcement learning + LLM agent energy manager for a home battery, using real
 
 > **Real vs simulated:** demand is REAL (UCI Individual Household Electric Power Consumption, one French household, 2006-2010). The battery, tariff, and any solar are SIMULATED. Savings are simulation results, not field results.
 
-Status: Tier 0 complete, plus the Tier 1 optimal-control oracle (data pipeline, simulated environment, baselines, Q-learning, 7 parameter sweeps, generalization test on 2010, perfect-foresight oracle). Deep RL and the agent layer are not built. Results will be added only from real runs saved in `results/`.
+Status: Tier 0 complete, plus Tier 1 (data pipeline, simulated environment, baselines, tabular Q-learning, 8 parameter sweeps, generalization test on 2010, perfect-foresight oracles, PPO and DQN deep RL with a peak-input ablation). The language-model agent layer is not built. Results will be added only from real runs saved in `results/`.
 
 ## Quickstart
 ```bash
@@ -15,6 +15,8 @@ uv run python scripts/make_eda.py
 uv sync --extra oracle        # optional: cvxpy for the oracle upper bound
 uv run python scripts/run_oracle.py
 uv run python scripts/run_oracle_discrete.py    # about 15 minutes
+uv sync --extra oracle --extra deeprl   # optional: torch + stable-baselines3
+uv run python scripts/run_deep_rl.py    # about 6 minutes on 10 cores
 uv run pytest
 ```
 
@@ -69,11 +71,34 @@ The 2010 split was used only after the Q-learning configs were fixed on validati
 | Q-learning, plan settings | 47.53 ± 0.98 | -4.9 ± 2.2% | -13.8 ± 6.1% | 4.16 ± 0.15 |
 | Q-learning, tuned | 46.06 ± 0.76 | -1.7 ± 1.7% | -4.7 ± 4.7% | 3.99 ± 0.16 |
 | Q-learning, selected (coarse grid) | 44.61 ± 0.62 | +1.5 ± 1.4% | 4.3 ± 3.8% | 3.47 ± 0.07 |
+| **PPO (deep RL)** | 42.08 ± 0.28 | **+7.1 ± 0.6%** | 20.0 ± 1.8% | 2.98 ± 0.02 |
+| **DQN (deep RL)** | 40.53 ± 0.99 | **+10.5 ± 2.2%** | 29.6 ± 6.2% | 2.94 ± 0.09 |
+| PPO, peak input hidden (ablation) | 42.69 ± 0.99 | +5.8 ± 2.2% | 16.2 ± 6.1% | 3.12 ± 0.07 |
+| DQN, peak input hidden (ablation) | 43.75 ± 1.20 | +3.4 ± 2.7% | 9.7 ± 7.5% | 3.52 ± 0.16 |
 | Oracle, 5 power levels (best plan found) | 32.86 | +27.5% | 77.1% | 2.32 |
 | Oracle, continuous power (perfect foresight) | 29.17 | +35.6% | 100% | 1.55 |
 
-The best learned controller is only slightly better than doing nothing and clearly worse than the simple greedy rule.
+**Main finding.** Tabular Q-learning (a 4-feature state table) barely beats doing nothing and loses clearly to the
+simple greedy rule. Deep RL with the same environment, reward, actions and sample budget does much better:
+**DQN beats the greedy rule on average** (+10.5 ± 2.2% against +7.8%; four of five seeds are above it) and PPO
+roughly matches it (+7.1 ± 0.6%). Both keep the weekly peak below the no-battery level (2.9 to 3.0 kW against
+3.45); no other non-oracle controller does (greedy 3.78, best tabular 3.47, rule-based 4.95). They also stay positive in the
+summer week (+9.0% and +12.6%) where the rule-based controller and the finer tabular agents lose money.
+
+**Why (ablation).** Hiding the peak-so-far input costs DQN about 7 points (+10.5% to +3.4%, weekly peak back to
+3.52 kW) and PPO about 1.3 points (within noise), so seeing the peak is a large part of the advantage, mostly for
+DQN. Giving the same peak information to the tabular agent as extra state bins did not help (`sweep_peak_bins`:
+-1.8 ± 1.5% and -3.0 ± 1.7% against -2.2 ± 3.3%, with more violations), consistent with the table being starved
+for data while a network generalizes across similar states. PPO without the peak input still beats every
+tabular agent (+5.8%), so the richer inputs and function approximation matter too; this project did not
+separate those two effects further.
+
+**Fairness notes.** The deep agents see the full observation (peak so far, last 3 hours of demand, day of week), while
+the tabular agent was limited to the plan's 4 discretized features. Deep RL hyperparameters are common defaults that
+were fixed before the 2010 split was evaluated and not tuned; the sample budget equals Q-learning's (504,000 steps).
+Training is far costlier: about 320 s per run (10 running in parallel) against about 10 s for tabular.
+
 Every controller loses ground from 2009 to 2010, and summer weeks are hardest for controllers that charge at full power
-(the summer week's whole peak is below the 3 kW charge power). The oracle is a linear program that knows the whole week of demand and prices in advance and uses continuous power, so it is an upper bound, not a deployable controller: about 59% of its saving comes from flattening the weekly peak (3.45 kW down to 1.55 kW) and 41% from shifting energy to cheap hours. The greedy rule captures about a fifth of it and the best Q-learner about 4%. A second oracle restricted to the environment's 5 power levels (a mixed-integer program) saves 27.5% on test (proven ceiling 28.7%), so the 5-level action set explains about a quarter of the distance between the best learner and the continuous oracle, and perfect foresight with 5 levels would still save far more than any controller built here. The greedy rule captures 28.4% of the 5-level oracle's saving and the best Q-learner 5.6 ± 5.0%. The environment ignores the energy left in the battery at the end of a week, so a terminal-adjusted version is also reported in `docs/GENERALIZATION.md`; it changes no ranking (best Q-learner +1.3 ± 1.4%, greedy +8.5%, oracle +34.9%). Oracle scores are re-created with `uv sync --extra oracle` and `uv run python scripts/run_oracle.py`.
+(the summer week's whole peak is below the 3 kW charge power). The oracle is a linear program that knows the whole week of demand and prices in advance and uses continuous power, so it is an upper bound, not a deployable controller: about 59% of its saving comes from flattening the weekly peak (3.45 kW down to 1.55 kW) and 41% from shifting energy to cheap hours. A second oracle restricted to the environment's 5 power levels (a mixed-integer program) saves 27.5% on test (proven ceiling 28.7%), so the 5-level action set explains about a quarter of the distance between the best tabular learner and the continuous oracle. DQN captures 38.4 ± 8.0% of the 5-level oracle's saving, PPO 25.9 ± 2.3%, the greedy rule 28.4% and the best tabular agent 5.6 ± 5.0%. The environment ignores the energy left in the battery at the end of a week, so a terminal-adjusted version is also reported in `docs/GENERALIZATION.md`; it changes no ranking (DQN +10.8%, PPO +7.4%, greedy +8.5%, best tabular +1.3 ± 1.4%, continuous oracle +34.9%). Oracle scores are re-created with `uv sync --extra oracle` and `uv run python scripts/run_oracle.py`; deep RL with `uv sync --extra oracle --extra deeprl` and `uv run python scripts/run_deep_rl.py`.
 
 Figures: `reports/figures/controllers_test.png`, `representative_days.png`, `policy_heatmap_*.png`. The settings used are recorded in `reports/tables/parameter_record.md`.

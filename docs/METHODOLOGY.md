@@ -43,4 +43,11 @@ The `tuned` hyperparameters (alpha 0.02, gamma 0.9) were chosen from single-seed
 - The solver returns the best plan found (its cost is achievable, replayed through the real environment with identical cost and zero violations) and a dual bound (a proven lower bound on cost). Each week has a 30-second limit and a 0.2% relative gap target; weeks that hit the limit still return their best plan and bound. Both are reported.
 - Variants: plain bill (`oracle_discrete`) and with leftover battery energy valued (`oracle_discrete_adj`).
 
+## Deep RL protocol
+- PPO and DQN (stable-baselines3, MlpPolicy with two hidden layers of 64) are trained on the train split only, with 5 seeds each, on the same environment, reward and 5 discrete actions as the tabular agent. The sample budget is 504,000 steps, equal to 3,000 episodes of 168 steps.
+- The network sees the env's observation (hour sin/cos, day of week, charge level, demand, tariff period, peak so far, last 3 hours of demand) divided by fixed scales (a high quantile of TRAIN demand for kW values); training rewards are multiplied by 0.1. Scoring uses the unscaled environment and the same evaluation weeks as every other controller.
+- Hyperparameters (`configs/experiments/ppo.yaml`, `dqn.yaml`) are common defaults fixed before the 2010 split was evaluated. They were not tuned on validation or test. A short smoke run on validation checked that the code works; no setting was changed afterwards.
+- The peak ablation (`--mask peak_kw --tag nopeak`) divides the peak input by infinity so the network always sees 0 for it; everything else is identical.
+- The tabular agent's state is the plan's 4 discretized features; `sweep_peak_bins` adds optional peak bins to it.
+
 (Further details are filled in as each phase lands.)

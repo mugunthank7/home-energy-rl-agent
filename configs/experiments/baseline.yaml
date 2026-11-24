@@ -22,6 +22,7 @@ discretization:
   hour_buckets: 24
   demand_bins: 5
   tariff_periods: 3
+  peak_quantiles: []                # optional peak-so-far bins (train-demand quantiles); empty = off
 splits:
   train: [2007, 2008]
   validation: [2009]

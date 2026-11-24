@@ -995,6 +995,10 @@ agent = [
     { name = "plotly" },
     { name = "streamlit" },
 ]
+deeprl = [
+    { name = "stable-baselines3" },
+    { name = "torch" },
+]
 oracle = [
     { name = "cvxpy" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1030,11 +1034,13 @@ requires-dist = [
     { name = "pyyaml" },
     { name = "requests" },
     { name = "scipy", marker = "extra == 'oracle'" },
+    { name = "stable-baselines3", marker = "extra == 'deeprl'" },
     { name = "stable-baselines3", marker = "extra == 'tier1'" },
     { name = "streamlit", marker = "extra == 'agent'" },
+    { name = "torch", marker = "extra == 'deeprl'" },
     { name = "torch", marker = "extra == 'tier1'" },
 ]
-provides-extras = ["oracle", "tier1", "agent"]
+provides-extras = ["oracle", "deeprl", "tier1", "agent"]
 
 [package.metadata.requires-dev]
 dev = [

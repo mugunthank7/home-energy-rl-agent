@@ -1,0 +1,20 @@
+# PPO (stable-baselines3). Hyperparameters are common defaults, fixed BEFORE the 2010 test split was
+# evaluated and not tuned afterwards. Same sample budget as Q-learning: 3000 episodes x 168 steps.
+name: ppo
+algo: ppo
+seeds: [42, 43, 44, 45, 46]
+total_timesteps: 504000
+reward_scale: 0.1               # rewards are multiplied by this for training only
+demand_ref_quantile: 0.95       # observation scale for kW values: this quantile of TRAIN demand
+eval_every: 25200               # validation learning curve: every 150 episodes of experience
+eval_episodes: 20
+hyperparameters:
+  learning_rate: 0.0003
+  n_steps: 2016                 # 12 episodes per update
+  batch_size: 504
+  n_epochs: 10
+  gamma: 0.95                   # same discount as the Q-learning baseline
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  net_arch: [64, 64]

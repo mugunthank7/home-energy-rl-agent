@@ -35,6 +35,8 @@ def rec():
                     fake_record(sp, "greedy_threshold", None, 9.0)]
         for seed, sav in [(1, 2.0), (2, 4.0)]:
             records += [fake_record(sp, f"q_{n}", seed, sav) for n in ("baseline", "tuned", "selected")]
+        records += [fake_record(sp, a, seed, sav) for a in ("ppo", "dqn", "ppo_nopeak", "dqn_nopeak")
+                    for seed, sav in [(1, 6.0), (2, 8.0)]]
         records += [fake_record(sp, "oracle", None, 40.0), fake_record(sp, "oracle_adj", None, 40.0)]
         records += [fake_record(sp, "oracle_discrete", None, 30.0), fake_record(sp, "oracle_discrete_adj", None, 30.0)]
     stats = {sp: {"hours": 100, "mean_kw": 1.2, "p95_kw": 3.0, "max_kw": 6.0, "mean_weekly_peak_kw": 4.0}
@@ -158,3 +160,19 @@ def test_oracle_share_table_covers_every_split(rec):
     share = fr.oracle_share_table(rec)
     assert list(share.columns)[1:] == [fr.SPLIT_TITLE[s] for s in SPLITS]
     assert share[share["controller"] == fr.LABEL["greedy_threshold"]].iloc[0, 1] == "22.5"
+
+
+def test_deep_rl_rows_are_averaged_over_seeds_like_q_learning(rec):
+    df = fr.metrics_table(rec, "test")
+    ppo = df[df["controller"] == fr.LABEL["ppo"]].iloc[0]
+    assert ppo["total savings %"] == "7.00 ± 1.00"
+    assert ppo["% of oracle savings"] == f"{100 * 7.0 / 40:.1f} ± {100 * 1.0 / 40:.1f}"
+    assert fr.is_seeded("dqn") and fr.is_seeded("q_tuned") and not fr.is_seeded("greedy_threshold")
+
+
+def test_deep_curves_plot_written(rec, tmp_path):
+    rec = {**rec, "curves": [{"algo": a, "seed": s, "curve": [{"timesteps": 100, "reward": -40.0 + s},
+                                                               {"timesteps": 200, "reward": -35.0 + s}]}
+                             for a in ("ppo", "dqn") for s in (1, 2)]}
+    fr.plot_deep_curves(rec, tmp_path / "curves.png")
+    assert (tmp_path / "curves.png").stat().st_size > 1000

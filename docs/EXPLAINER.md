@@ -103,3 +103,14 @@ Plain-English notes so each module can be explained on video. One entry per modu
 - **How we know it is right:** we replay each plan through the real environment. The cost matches the solver's to four decimals and there are no violations. Tests also check that small changes to a plan never make it cheaper.
 - **Two numbers per week:** the best plan found (achievable) and a proven bound the true best cannot beat. Some weeks hit the time limit, so we report both. On the test year they differ by 1.3 points of savings.
 - **What it taught us:** 5 levels cost about 8 points of savings (35.6% down to 27.5%), roughly a quarter of the distance from my best learner to the continuous oracle. Even so, a 5-level plan with foresight saves 27.5%, so the learners miss most of what their own actions allow.
+
+## controllers/sb3_agents.py, deep_rl.py and scripts/run_deep_rl.py (Phase 7)
+- **What they do:** train two deep reinforcement learning agents, PPO and DQN, on the same battery problem as the table-based Q-learning.
+- **Table vs network:** the Q-table stores one number per situation and cannot say anything about situations it has not visited. A neural network learns a smooth rule, so similar situations get similar decisions. That is the main reason it can use more information.
+- **DQN:** like Q-learning but the table is replaced by a small network, with a memory of past experience it replays to learn from. **PPO:** learns the policy (what to do) directly, taking careful, small steps so training stays stable.
+- **Fair setup:** same environment, same 5 actions, same reward, same 504,000 training steps as Q-learning, same evaluation weeks. We only rescale the inputs so the network learns well, and shrink the reward so numbers are not huge.
+- **Not tuned:** settings are common defaults picked before looking at the 2010 results. Tuning on the test year would make the result look better than it is.
+- **What it sees:** the full observation, including the highest import so far this week. The tabular agent only used 4 summary features.
+- **Ablation:** we also trained both agents with the peak input switched off (the network always sees 0 for it). DQN lost about 7 points of savings and PPO about 1, so seeing the peak matters, a lot for DQN.
+- **Result:** DQN beats the simple greedy rule on average and PPO roughly matches it, and both cut the weekly peak below the no-battery level. It costs about 30x more training time than the table.
+- **Limits:** a different amount of information than the tabular agent, one household, a made-up tariff, and big seed-to-seed spread for DQN.

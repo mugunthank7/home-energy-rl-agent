@@ -1,0 +1,12 @@
+# Give the tabular agent the highest grid import so far, as extra state bins (quantiles of TRAIN demand).
+# Tests whether seeing the peak helps tabular Q-learning, as it does for the deep agents.
+name: sweep_peak_bins
+base: baseline            # the plan's hyperparameters; one factor changes at a time
+seeds: [42, 43, 44, 45, 46]
+variants:
+  - label: no peak input (3600 states)
+    set: {discretization.peak_quantiles: []}
+  - label: 3 peak bins (10800 states)
+    set: {discretization.peak_quantiles: [0.75, 0.95]}
+  - label: 5 peak bins (18000 states)
+    set: {discretization.peak_quantiles: [0.6, 0.8, 0.9, 0.97]}

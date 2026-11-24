@@ -17,19 +17,28 @@ from home_energy_rl_agent.controllers.qlearning import QLearningAgent
 from home_energy_rl_agent.final_eval import FINAL_DIR
 from home_energy_rl_agent.reporting import FIG_DIR, TABLE_DIR
 
-ORDER = ["no_battery", "rule_based", "greedy_threshold", "q_baseline", "q_tuned", "q_selected",
-         "oracle_discrete", "oracle"]
+ORDER = ["no_battery", "rule_based", "greedy_threshold", "q_baseline", "q_tuned", "q_selected", "ppo", "dqn",
+         "ppo_nopeak", "dqn_nopeak", "oracle_discrete", "oracle"]
+SEEDED = ("q_", "ppo", "dqn")      # controllers trained with several seeds (shown as mean ± std)
+
+
+def is_seeded(controller: str) -> bool:
+    return controller.startswith(SEEDED)
+
 LABEL = {
     "no_battery": "No battery", "rule_based": "Rule-based", "greedy_threshold": "Greedy threshold",
     "q_baseline": "Q-learning (plan settings)", "q_tuned": "Q-learning (tuned)",
     "q_selected": "Q-learning (selected: coarse grid)",
+    "ppo": "PPO (deep RL)", "dqn": "DQN (deep RL)",
+    "ppo_nopeak": "PPO, peak input hidden (ablation)", "dqn_nopeak": "DQN, peak input hidden (ablation)",
     "oracle_discrete": "Oracle, 5 power levels (best plan found)",
     "oracle": "Oracle (perfect foresight, upper bound)",
 }
 SHORT = {"no_battery": "No battery", "rule_based": "Rule-based", "greedy_threshold": "Greedy threshold",
          "q_baseline": "Q: plan settings", "q_tuned": "Q: tuned", "q_selected": "Q: coarse grid",
+         "ppo": "PPO", "dqn": "DQN", "ppo_nopeak": "PPO no-peak", "dqn_nopeak": "DQN no-peak",
          "oracle_discrete": "Oracle 5-level", "oracle": "Oracle (continuous)"}
-COLORS = dict(zip(ORDER, ["#888888", "#d95f02", "#1b9e77", "#7570b3", "#e7298a", "#66a61e", "#6a6a6a", "#000000"], strict=True))
+COLORS = dict(zip(ORDER, ["#888888", "#d95f02", "#1b9e77", "#7570b3", "#e7298a", "#66a61e", "#e6ab02", "#1f78b4", "#f0c75e", "#7fb8e0", "#6a6a6a", "#000000"], strict=True))
 SPLIT_TITLE = {
     "validation": "Validation (2009)", "test": "Test (2010)",
     "test_winter_week": "Winter week (Jan 18-24, 2010)", "test_summer_week": "Summer week (Jul 5-11, 2010)",
@@ -47,9 +56,11 @@ METRICS = [
 def load_records(path: Path = FINAL_DIR / "records.json") -> dict:
     """The final comparison records, plus the oracle's if scripts/run_oracle.py has been run."""
     rec = json.loads(path.read_text())
-    for extra in ("oracle.json", "oracle_discrete.json"):
+    for extra in ("oracle.json", "oracle_discrete.json", "deep_rl.json", "deep_rl_nopeak.json"):
         if (path.parent / extra).exists():
-            rec["records"] += json.loads((path.parent / extra).read_text())["records"]
+            more = json.loads((path.parent / extra).read_text())
+            rec["records"] += more["records"]
+            rec.setdefault("curves", []).extend(more.get("curves", []))
     return rec
 
 
@@ -90,7 +101,7 @@ def pct_of_oracle(records: list[dict], split: str, controller: str, adjusted: bo
 
 
 def _fmt(controller: str, m: float, s: float, digits: int = 2) -> str:
-    return f"{m:.{digits}f} ± {s:.{digits}f}" if controller.startswith("q_") else f"{m:.{digits}f}"
+    return f"{m:.{digits}f} ± {s:.{digits}f}" if is_seeded(controller) else f"{m:.{digits}f}"
 
 
 # --- Metrics table for every controller on one split ---
@@ -133,7 +144,7 @@ def generalization_table(rec: dict) -> pd.DataFrame:
         row = {"controller": LABEL[c]}
         for sp in splits:
             m, s = seed_stats(rec["records"], sp, c, "savings_total_pct")
-            row[SPLIT_TITLE[sp]] = f"{m:.1f} ± {s:.1f}" if c.startswith("q_") else f"{m:.1f}"
+            row[SPLIT_TITLE[sp]] = f"{m:.1f} ± {s:.1f}" if is_seeded(c) else f"{m:.1f}"
         if c != "no_battery":
             v, _ = seed_stats(rec["records"], "validation", c, "savings_total_pct")
             t, _ = seed_stats(rec["records"], "test", c, "savings_total_pct")
@@ -188,7 +199,7 @@ def plot_controller_bars(rec: dict, split: str, path: Path) -> None:
         vals, errs = [], []
         for c in ctrls:
             rows = [r for r in rec["records"] if r["split"] == split and r["controller"] == c]
-            if c.startswith("q_"):                       # randomness = training seed
+            if is_seeded(c):                             # randomness = training seed
                 v = [r["summary"][key] for r in rows]
                 vals.append(np.mean(v)); errs.append(np.std(v))
             elif col:                                    # deterministic: SE over episodes
@@ -203,6 +214,28 @@ def plot_controller_bars(rec: dict, split: str, path: Path) -> None:
             ax.axhline(0, color="k", lw=0.8)
     fig.suptitle(f"{SPLIT_TITLE[split]}: error bars are std over seeds (Q-learning) or standard error "
                  "over episodes (deterministic controllers)", fontsize=9)
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+
+
+# --- Deep RL learning curves: greedy validation reward against training steps ---
+def plot_deep_curves(rec: dict, path: Path) -> None:
+    curves = rec.get("curves", [])
+    if not curves:
+        return
+    fig, ax = plt.subplots(figsize=(7, 4))
+    for algo in ("ppo", "dqn", "ppo_nopeak", "dqn_nopeak"):
+        runs = [c["curve"] for c in curves if c["algo"] == algo and c["curve"]]
+        if not runs:
+            continue
+        steps = [p["timesteps"] for p in runs[0]]
+        vals = np.array([[p["reward"] for p in run] for run in runs])
+        ax.errorbar(steps, vals.mean(0), vals.std(0), marker="o", ms=3, capsize=2, color=COLORS[algo],
+                    label=LABEL[algo], ls="--" if algo.endswith("nopeak") else "-")
+    ax.set(xlabel="Training steps (168 steps = one 7-day episode)", ylabel="Validation reward (greedy, 20 weeks)",
+           title="Deep RL learning curves (mean ± std over seeds)")
+    ax.legend()
     fig.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)
@@ -319,6 +352,11 @@ def parameter_record(path: Path) -> None:
         parts.append(f"| {name} | {q['alpha']} | {q['gamma']} | {q['epsilon_schedule']} | {q['episodes']} | "
                      f"{g['soc_bins']}x{g['hour_buckets']}x{g['demand_bins']}x{g['tariff_periods']} | "
                      f"{e.get('env_overrides') or 'none'} |")
+    for name in ["ppo", "dqn"]:
+        f = exp / f"{name}.yaml"
+        if f.exists():
+            parts += ["", f"## Deep RL: {name} (`configs/experiments/{name}.yaml`)", "", "| parameter | value |", "|---|---|"]
+            parts += [f"| {k} | {v} |" for k, v in _flatten(yaml.safe_load(f.read_text()))]
     parts += ["", "## Sweeps", "", "| sweep | base | changed | seeds | runs on disk |", "|---|---|---|---|---|"]
     for p in sorted(exp.glob("sweep_*.yaml")):
         s = yaml.safe_load(p.read_text())
@@ -394,6 +432,7 @@ def report_final() -> None:
         if plan is not None:
             days[label]["oracle"] = plan
     plot_days(days, FIG_DIR / "representative_days.png")
+    plot_deep_curves(rec, FIG_DIR / "deep_rl_curves.png")
 
     # Q-table policy heatmaps for the plan's baseline grid and the selected coarse grid.
     env = EnergyEnv(splits["validation"], env_cfg, tariff, seed=42)

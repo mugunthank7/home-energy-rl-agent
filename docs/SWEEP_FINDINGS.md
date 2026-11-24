@@ -69,3 +69,20 @@ project did not test directly.
   covered for alpha x gamma.
 - The best single settings were picked by looking at these same validation results, so their numbers
   are optimistic. Only the 2010 test numbers will be unbiased.
+
+
+## Does seeing the peak help the tabular agent? (`sweep_peak_bins`)
+
+The deep agents see the highest grid import so far this week, and the earlier sweeps suggested the peak is what
+the tabular agent gets wrong. This sweep adds that input to the Q-table as extra state bins (train-demand
+quantiles), 5 seeds each, on the validation split:
+
+| Variant | Total savings | Violations / week | Cycles / week |
+|---|---|---|---|
+| no peak input (3,600 states) | -2.2 ± 3.3% | 0.03 ± 0.05 | 4.8 |
+| 3 peak bins (10,800 states) | -1.8 ± 1.5% | 0.29 ± 0.11 | 6.1 |
+| 5 peak bins (18,000 states) | -3.0 ± 1.7% | 0.54 ± 0.11 | 6.2 |
+
+No improvement, and more violations. Consistent with the sparse-visits finding above: every added bin splits the
+data thinner. The deep agents, which can generalize across similar peak levels, do benefit from the same input
+(`docs/GENERALIZATION.md`).

@@ -20,9 +20,10 @@ total savings across all sweep variants, which was the coarse state grid).
 | Oracle (perfect foresight, upper bound) | 29.17 | +35.6% | 1.55 | 0 |
 
 - The best learned controller saves about $0.70 a week (+1.5 ± 1.4%, roughly one standard deviation
-  from zero). The greedy-threshold rule saves about $3.53 a week. On this simulation, RL does not beat
-  the simple greedy rule.
-- Only the coarse-grid Q-learning agent beats doing nothing on test, and by a small margin.
+  from zero). The greedy-threshold rule saves about $3.53 a week. Tabular Q-learning does not beat the simple
+  greedy rule; deep RL (below) does, on average.
+- Of the tabular agents, only the coarse-grid one beats doing nothing on test, and by a small margin. The deep
+  agents (next section) beat it clearly.
 - Measured against the oracle, the best learned controller captures 4.3 ± 3.8% of the achievable saving and
   the greedy rule 21.9% (see the next section).
 
@@ -99,6 +100,57 @@ plan-settings policy on the 3,600-state grid looks noisy with no clear daily pat
 - **The simple rules were not tuned.** Greedy and rule-based settings come straight from
   `configs/controllers.yaml`, so the comparison understates how good tuned rules could be too.
 
+
+## Deep RL: PPO and DQN
+
+`controllers/sb3_agents.py` and `deep_rl.py` train PPO and DQN (stable-baselines3, two hidden layers of 64) on
+the same environment, reward and 5 actions as the tabular agent, with the same sample budget (504,000 steps =
+3,000 episodes). Rewards are scaled by 0.1 and observations divided by fixed constants for the network; scoring
+uses the raw environment and the same weeks as every other controller. Hyperparameters are common defaults,
+written to `configs/experiments/ppo.yaml` and `dqn.yaml` before the 2010 test split was evaluated, and not tuned
+on validation or test. 5 seeds each.
+
+| Test (2010, 100 weeks) | Total cost ($/week) | Total savings | Peak (kW) | Violations/wk | Cycles/wk |
+|---|---|---|---|---|---|
+| Greedy threshold | 41.78 | +7.8% | 3.78 | 2.38 | 2.9 |
+| Q-learning, selected | 44.61 ± 0.62 | +1.5 ± 1.4% | 3.47 ± 0.07 | 0.00 | 1.8 |
+| **PPO** | 42.08 ± 0.28 | **+7.1 ± 0.6%** | 2.98 ± 0.02 | 0.03 ± 0.01 | 1.2 ± 0.2 |
+| **DQN** | 40.53 ± 0.99 | **+10.5 ± 2.2%** | 2.94 ± 0.09 | 0.03 ± 0.04 | 3.9 ± 1.1 |
+| PPO, peak input hidden | 42.69 ± 0.99 | +5.8 ± 2.2% | 3.12 ± 0.07 | 0.01 ± 0.01 | 1.2 ± 0.6 |
+| DQN, peak input hidden | 43.75 ± 1.20 | +3.4 ± 2.7% | 3.52 ± 0.16 | 0.19 ± 0.19 | 4.3 ± 2.0 |
+| Oracle, 5 power levels | 32.86 | +27.5% | 2.32 | 0 | 5.5 |
+| Oracle, continuous | 29.17 | +35.6% | 1.55 | 0 | 5.2 |
+
+- **DQN beats the greedy rule on average, PPO roughly matches it.** DQN's five seeds score 12.5, 11.0, 7.1, 9.2
+  and 13.0%, so four are above the greedy rule's 7.8% and one is just below. PPO's seeds are 6.5, 6.9, 6.6, 8.2
+  and 7.3%. DQN's advantage over greedy is about 2.7 points, roughly one seed standard deviation, so call it
+  an edge, not a rout. Both are far above the best tabular agent (+1.5%).
+- **They cut the peak.** Weekly peak is 2.94 to 2.98 kW against 3.45 with no battery, a 14% reduction. No other
+  non-oracle controller gets below the no-battery peak. Their violations are near zero.
+- **They hold up across seasons** (total savings, test): summer week PPO +9.0 ± 1.0%, DQN +12.6 ± 4.0%; winter
+  week PPO +13.2 ± 0.5%, DQN +12.2 ± 4.0%; Jun-Jul weeks PPO +7.0%, DQN +12.1%. The rule-based controller and
+  the finer tabular agents lose money in summer. Validation to test: PPO -2.8 points, DQN -1.2 points.
+- **Share of the oracle.** DQN captures 29.6 ± 6.2% of the continuous oracle's saving and 38.4 ± 8.0% of the 5-level
+  oracle's; PPO 20.0 ± 1.8% and 25.9 ± 2.3%. The greedy rule gets 21.9% and 28.4%; the best tabular agent 4.3% and 5.6%.
+- **Leftover energy does not explain it.** The deep agents end the week 1.3 to 1.5 kWh fuller than they started.
+  Terminal-adjusted savings are slightly higher: PPO +7.4%, DQN +10.8%.
+- **Cost.** About 320 s (PPO) and 340 s (DQN) per run with 10 runs in parallel, against about 10 s for tabular.
+  Learning curves (`reports/figures/deep_rl_curves.png`): DQN reaches good validation reward within about
+  150,000 steps and is noisy afterwards; PPO is smoother and plateaus a little lower.
+
+**Ablation: hiding the peak input.** Retraining with the peak-so-far input set to zero (same seeds and settings)
+costs DQN about 7 points on test (+10.5% to +3.4%; weekly peak back up to 3.52 kW; violations 0.03 to 0.19; summer
+week +12.6% to -2.3%). For PPO it costs about 1.3 points (+7.1% to +5.8%), within the seed noise. So seeing the
+peak is a large part of DQN's advantage and a small part of PPO's. It is not the whole story: PPO without the
+peak still beats every tabular agent. And giving the same information to the tabular agent as extra state bins did
+not help (`sweep_peak_bins`, `docs/SWEEP_FINDINGS.md`), which fits the table being starved for data while a network
+generalizes across similar states. This is an interpretation: the project did not isolate function approximation
+from the other inputs the network receives (last 3 hours of demand, day of week, exact charge level).
+
+**Caveats.** The deep agents see more than the tabular agent, by design of the plan's 4-feature state; the comparison
+is "tabular with the plan's state" against "deep RL with the full observation", not a controlled test of the
+algorithm alone. Hyperparameters were not tuned for either deep algorithm or for the plan-settings tabular agent,
+so a tuned comparison could differ. DQN has large seed-to-seed spread. One household, one made-up tariff.
 
 ## The oracle: how much is left on the table
 

@@ -21,15 +21,21 @@ problem is sequential and uncertain. Charging now only pays off hours later, and
 unknown. Reinforcement learning (RL) is a natural fit, because an agent can learn a charging policy from
 experience without a model of the household.
 
-This project asks a practical question: **can tabular Q-learning learn a battery controller that beats
+This project asks a practical question: **can reinforcement learning learn a battery controller that beats
 simple hand-written rules on real household demand, and how well does it generalize to a later year and
-to other seasons?** We built the data pipeline, a Gymnasium environment, four controllers (no battery,
-rule-based, greedy threshold, Q-learning), seven parameter sweeps, and a held-out test on 2010.
+to other seasons?** We built the data pipeline, a Gymnasium environment, three non-learning controllers (no
+battery, rule-based, greedy threshold), tabular Q-learning, two deep RL agents (PPO and DQN), eight parameter
+sweeps, two optimal-control oracles as upper bounds, and a held-out test on 2010.
 
-The main finding is a negative one, and we report it plainly: in this simulation, Q-learning with a
-discretized state beats doing nothing only by a small margin and is clearly worse than a simple greedy
-price-threshold rule. An optimal-control oracle with perfect foresight shows that much more is possible
-(about 36% savings on the test year, and 27.5% even when limited to the same 5 power levels), so the shortfall is in the learner and its inputs, not in the problem.
+The answer depends on the learner. **Tabular Q-learning**, with the plan's 4-feature state table, beats doing
+nothing only by a small margin and is clearly worse than a simple greedy price-threshold rule. **Deep RL does
+much better**: on the 2010 test weeks DQN saves 10.5 ± 2.2% against 7.8% for the greedy rule (four of its five
+seeds are above the rule) and PPO 7.1 ± 0.6%, roughly matching it. Both keep the weekly peak below the
+no-battery level, and they stay positive in summer, where the rule-based controller loses money. An ablation
+that hides the peak-so-far input costs DQN about 7 points, so seeing the peak is a large part of why it wins.
+An optimal-control oracle with perfect foresight shows that much more is still possible (about 36% savings on
+the test year, and 27.5% even when limited to the same 5 power levels), so the best learned controller is
+well short of the achievable saving.
 
 ## 2. Data and preprocessing
 
@@ -118,7 +124,7 @@ terminal-adjusted cost that values leftover energy at the off-peak price of buyi
 stored kWh). It changes no ranking (section 6.3 and `docs/GENERALIZATION.md`), so the plain bill stays the
 headline, with the adjusted figure as a robustness check.
 
-**Tests** (`tests/`, 93 passing). Energy conservation, charge level always in bounds, an idle battery
+**Tests** (`tests/`, 103 passing). Energy conservation, charge level always in bounds, an idle battery
 equals demand times price, identical results under the same seed, the equivalence of the reward variants,
 and the data-cleaning rules.
 
@@ -167,7 +173,15 @@ made on validation data only.
    1.3 points of savings (27.5% and 28.7%), and half of the test weeks solved to the 0.2% tolerance within the
    30-second limit per week.
 
-Deep RL (DQN, PPO) is not built.
+7. **Deep RL: PPO and DQN** (stable-baselines3, two hidden layers of 64). They train on the same environment,
+   reward and 5 actions as the tabular agent, with the same sample budget (504,000 steps = 3,000 episodes), and
+   are scored on the raw environment with the same evaluation. The network sees the full observation (including
+   the highest grid import so far, the last 3 hours of demand and the day of week), divided by fixed scales;
+   rewards are multiplied by 0.1 for training. The hyperparameters are common defaults, fixed before the 2010
+   split was evaluated and not tuned. This is a different amount of information from the tabular agent, which
+   was limited to the plan's 4 discretized features, so the comparison is "tabular with the plan's state"
+   against "deep RL with the full observation", not a controlled test of the algorithm alone. A peak ablation
+   retrains both agents with the peak input hidden (always 0).
 
 ## 5. Experiments
 
@@ -177,14 +191,18 @@ Training uses the training split only; a run takes about 9.5 seconds for 3,000 e
 **Baseline.** alpha 0.1, gamma 0.95, epsilon decaying exponentially from 1.0 to 0.05 (reaching the floor
 60% of the way through training), 3,000 episodes, 10 kWh battery, 10 x 24 x 5 x 3 grid.
 
-**Seven sweeps, 5 seeds each (235 runs in total, validation split).** One factor changes at a time around
+**Eight sweeps, 5 seeds each (250 runs in total, validation split).** One factor changes at a time around
 the baseline: learning rate (0.01, 0.05, 0.1, 0.3), discount (0.8, 0.9, 0.95, 0.99), epsilon schedule
 (linear, exponential fast, exponential, exponential slow), training episodes (500, 1,500, 3,000, 6,000),
 battery capacity (5, 10, 13.5, 20 kWh), state grid (coarse, medium, fine) and reward weights (four
-combinations of cost, peak and cycle weights). A 5 x 4 grid of alpha and gamma gives the sensitivity
-heatmap. All tables and figures are rebuilt with `scripts/make_report.py`.
+combinations of cost, peak and cycle weights), plus a test of giving the table the peak so far as extra state
+bins (none, 3 bins, 5 bins). A 5 x 4 grid of alpha and gamma gives the sensitivity heatmap. All tables and figures are rebuilt with `scripts/make_report.py`.
 
-**Final test.** Each Q-learning version is trained on 2007-2008 with 5 seeds, then scored on validation, on
+**Deep RL.** PPO and DQN, 5 seeds each, 504,000 training steps (the same sample budget as tabular
+Q-learning), run as 10 parallel jobs of about 5 minutes each, against about 10 seconds for a tabular run.
+Settings are in `configs/experiments/ppo.yaml` and `dqn.yaml`.
+
+**Final test.** Each Q-learning and deep RL version is trained on 2007-2008 with 5 seeds, then scored on validation, on
 100 sampled weeks of 2010, on the held-out winter and summer weeks, and on every Jan-Feb and Jun-Jul 2010
 week that starts at midnight. Every controller sees the same weeks.
 
@@ -200,12 +218,15 @@ week that starts at midnight. Every controller sees the same weeks.
 | Q-learning, plan settings | -2.2 ± 3.3% | 5.2 ± 1.3% | 13.6 ± 7.1% higher | 0.03 |
 | Q-learning, tuned | 1.2 ± 1.9% | 7.3 ± 1.2% | 8.2 ± 3.4% higher | 0.04 |
 | Q-learning, selected | 2.7 ± 1.7% | 3.2 ± 2.3% | 1.9 ± 2.1% lower | 0.00 |
+| PPO (deep RL) | 9.9 ± 0.7% | 3.9 ± 0.7% | 19.2 ± 0.8% lower | 0.05 ± 0.03 |
+| DQN (deep RL) | 11.7 ± 2.5% | 8.6 ± 3.0% | 16.5 ± 3.2% lower | 0.02 ± 0.01 |
 
 *Table 2. "Total savings" includes the demand charge. Q-learning rows are mean ± std over 5 seeds
 (`reports/tables/final_metrics_validation.md`).*
 
 The rule-based controller cuts the energy bill by 18.5% but raises the weekly peak by 28%, so the demand
-charge cancels the saving. The greedy rule charges gently and nets 9.6%.
+charge cancels the saving. The greedy rule charges gently and nets 9.6%. On validation the deep agents also
+reach about 10 to 12% and lower the peak.
 
 ### 6.2 Parameter sweeps
 
@@ -220,6 +241,7 @@ Total savings on the validation split, mean ± std over 5 seeds (`reports/tables
 | Battery capacity | 5 kWh: -0.7 ± 1.0 / 10: -2.2 ± 3.3 / 13.5: -1.9 ± 1.2 / 20: -1.1 ± 1.9 |
 | State grid | coarse: 2.7 ± 1.7 / medium: -2.2 ± 3.3 / fine: -3.3 ± 0.6 |
 | Reward weights | default: -2.2 ± 3.3 / cost-focused: -9.2 ± 0.4 / peak-focused: -1.8 ± 0.8 / cycle-averse: -1.6 ± 1.7 |
+| Peak-so-far input for the table | none: -2.2 ± 3.3 / 3 bins: -1.8 ± 1.5 / 5 bins: -3.0 ± 1.7 (violations rise to 0.29 and 0.54 a week) |
 
 *Table 3.* The 5-seed std is 1 to 3 points, so many differences between neighbouring values are within
 noise. The clear effects are: lower alpha is better (the alpha x gamma grid shows the same direction at every
@@ -241,6 +263,10 @@ reward was changed.
 | Q-learning, plan settings | 47.53 ± 0.98 | -4.9 ± 2.2% | 4.16 ± 0.15 | 0.02 | 4.82 ± 0.24 |
 | Q-learning, tuned | 46.06 ± 0.76 | -1.7 ± 1.7% | 3.99 ± 0.16 | 0.02 | 5.11 ± 0.16 |
 | Q-learning, selected | 44.61 ± 0.62 | 1.5 ± 1.4% | 3.47 ± 0.07 | 0.00 | 1.84 ± 0.52 |
+| **PPO (deep RL)** | 42.08 ± 0.28 | **7.1 ± 0.6%** | 2.98 ± 0.02 | 0.03 | 1.17 ± 0.18 |
+| **DQN (deep RL)** | 40.53 ± 0.99 | **10.5 ± 2.2%** | 2.94 ± 0.09 | 0.03 | 3.88 ± 1.08 |
+| PPO, peak input hidden | 42.69 ± 0.99 | 5.8 ± 2.2% | 3.12 ± 0.07 | 0.01 | 1.19 ± 0.58 |
+| DQN, peak input hidden | 43.75 ± 1.20 | 3.4 ± 2.7% | 3.52 ± 0.16 | 0.19 | 4.28 ± 2.00 |
 | Oracle, 5 power levels | 32.86 | 27.5% | 2.32 | 0 | 5.49 |
 | Oracle, continuous power | 29.17 | 35.6% | 1.55 | 0 | 5.24 |
 
@@ -254,6 +280,10 @@ figures are std over 5 training seeds.*
 | Q-learning, plan settings | -13.8 ± 6.1% | -17.9 ± 7.9% | -4.7 ± 2.2% |
 | Q-learning, tuned | -4.7 ± 4.7% | -6.0 ± 6.1% | -1.7 ± 1.7% |
 | Q-learning, selected | 4.3 ± 3.8% | 5.6 ± 5.0% | 1.3 ± 1.4% |
+| PPO (deep RL) | 20.0 ± 1.8% | 25.9 ± 2.3% | 7.4 ± 0.6% |
+| DQN (deep RL) | 29.6 ± 6.2% | 38.4 ± 8.0% | 10.8 ± 2.3% |
+| PPO, peak input hidden | 16.2 ± 6.1% | 21.0 ± 7.9% | 5.8 ± 2.3% |
+| DQN, peak input hidden | 9.7 ± 7.5% | 12.5 ± 9.7% | 3.6 ± 2.9% |
 | Oracle, 5 power levels | 77.1% | 100% | 27.0% |
 | Oracle, continuous power | 100% | 129.7% | 34.9% |
 
@@ -262,12 +292,30 @@ Adjusted savings value leftover battery energy; each adjusted oracle is a separa
 still a bound under that metric. The 5-level oracle's savings are the best plan found; the proven ceiling is
 28.7%, so its shares could be overstated by up to about 5% in relative terms.*
 
-The best learned controller saves about $0.70 a week, roughly one standard deviation from zero. The greedy
-rule saves about $3.53 a week, and the oracle $16.14 a week.
+The best tabular controller saves about $0.70 a week, roughly one standard deviation from zero. The greedy
+rule saves about $3.53 a week, PPO $3.23, DQN $4.78 and the oracle $16.14.
+
+### 6.4 Deep RL: seasons and the peak ablation
+
+Total savings on held-out seasons (test; mean ± std over 5 seeds; `reports/tables/generalization.md`):
+
+| Controller | Winter week | Summer week | Jan-Feb weeks | Jun-Jul weeks |
+|---|---|---|---|---|
+| Rule-based | 7.4% | -20.5% | 1.6% | -17.8% |
+| Greedy threshold | 11.0% | 2.0% | 10.9% | -1.8% |
+| Q-learning, selected | 4.3 ± 3.8% | 0.2 ± 2.5% | 2.5 ± 1.4% | 1.0 ± 1.6% |
+| PPO | 13.2 ± 0.5% | 9.0 ± 1.0% | 9.9 ± 0.6% | 7.0 ± 0.8% |
+| DQN | 12.2 ± 4.0% | 12.6 ± 4.0% | 10.4 ± 2.7% | 12.1 ± 2.0% |
+| PPO, peak input hidden | 13.4 ± 1.3% | 9.5 ± 2.3% | 8.5 ± 2.7% | 6.3 ± 1.7% |
+| DQN, peak input hidden | 10.4 ± 5.5% | -2.3 ± 4.3% | 7.1 ± 3.1% | 1.2 ± 4.0% |
+
+*Table 6.* DQN's five test seeds score 12.5, 11.0, 7.1, 9.2 and 13.0%, and PPO's 6.5, 6.9, 6.6, 8.2 and 7.3%.
+Learning curves are in `reports/figures/deep_rl_curves.png`: DQN reaches good validation reward within about
+150,000 steps and is noisy afterwards; PPO is smoother and plateaus a little lower.
 
 ## 7. Analysis
 
-**Why the learned controller struggles: the peak.** The demand charge depends on the highest hour of the
+**Why the tabular controller struggles: the peak.** The demand charge depends on the highest hour of the
 week, and the agent cannot see how close it is to the peak it has already set. It therefore charges at
 full rate in hours that raise the peak. The evidence: the reward-weight sweep, where a cost-focused reward
 gives the lowest total savings (-9.2%) and the highest peak; the rule-based controller, whose full-rate
@@ -290,6 +338,19 @@ savings drop (3.4%).
 reward converges: about 1,000 episodes for the fast decay, 2,000 for the exponential, and 2,500 for the slow
 and linear schedules. The final greedy policies are close (-1.7% to -3.9%, within the noise). The schedule
 changes how fast the agent learns, not where it ends up.
+
+**Why deep RL does better, and the ablation.** The deep agents beat the tabular one by 5 to 9 points on test and
+bring the weekly peak down to 2.94 to 2.98 kW, 14% below the no-battery peak, which no other non-oracle controller
+manages. Two differences could explain this: they see more (the peak so far, recent demand, day of week), and
+a network generalizes across similar situations where a table cannot. The ablation separates part of it. With the
+peak input hidden, DQN falls from +10.5% to +3.4% (weekly peak back to 3.52 kW, violations 0.03 to 0.19, summer
+week +12.6% to -2.3%), so seeing the peak is a large part of its advantage. PPO falls from +7.1% to +5.8%, within
+the seed noise, and still beats every tabular agent, so something other than the peak input also helps. Giving the
+same peak information to the table as extra state bins did not help (-1.8% and -3.0% against -2.2%, with more
+violations), consistent with a table being starved for data: each extra bin splits the same training experience
+thinner. This is an interpretation; we did not isolate function approximation from the other inputs. The edge
+over the greedy rule is real but modest: DQN is about 2.7 points ahead on average (roughly one seed standard
+deviation) and one of its five seeds is below the rule, while PPO is about level with it.
 
 **How far from the best possible.** On the 2010 test weeks the oracle saves 35.6%, and about 59% of that is
 peak shaving: it cuts the weekly peak from 3.45 kW to 1.55 kW (worth about $9.50 a week at $5 per kW) and the
@@ -331,6 +392,10 @@ grid looks noisy with no clear daily pattern.
 - One household, one made-up tariff, one battery power limit, one test year. The result could look
   different with other tariffs, power limits or years.
 - Tabular Q-learning with a hand-chosen discretization, trained on 2007-2008 only.
+- The deep agents see more information than the tabular agent (full observation against 4 features), so the
+  comparison is not a controlled test of the algorithm alone. Their hyperparameters are untuned defaults, as are
+  the plan-settings tabular agent's; a tuned comparison could differ. DQN has a large seed-to-seed spread
+  (7.1% to 13.0%), and training costs about 30 times more compute than the table.
 - The configs were chosen on validation data, so validation numbers for the chosen settings are optimistic.
   The test numbers are unbiased but come from one run of the protocol.
 - The rule-based and greedy controllers were not tuned, so the comparison understates how good tuned rules
@@ -338,7 +403,7 @@ grid looks noisy with no clear daily pattern.
 - Both oracles assume exact knowledge of the whole week, so no real controller can reach 100%. The 5-level
   oracle is the best plan the solver found within 30 seconds per week (half of the test weeks did not reach the
   0.2% target); its proven ceiling is 1.3 points higher, so shares against it carry that uncertainty. It also
-  only allows violation-free plans. Deep RL (DQN, PPO) is not built.
+  only allows violation-free plans.
 - The environment ignores energy left in the battery at the end of a week. The terminal-adjusted check shifts
   savings by under one point and changes no ranking, but it is a choice of replacement price (off-peak).
 
@@ -360,17 +425,22 @@ On real household demand with a simulated battery and tariff, tabular Q-learning
 bill but, with the plan's settings, did not beat doing nothing once the demand charge was included
 (-2.2 ± 3.3% on validation, -4.9 ± 2.2% on test). Fixing the reward (bill-aligned, noise-reduced, stricter
 violation penalty) and choosing a coarser state grid gave a small gain (+1.5 ± 1.4% on test), still far
-behind a simple greedy price-threshold rule (+7.8%). The sweeps show where the learner is sensitive:
-learning rate, grid resolution and the peak-related reward weight. Generalization to 2010 is weaker for every
-controller because demand peaks are lower, and summer weeks are hardest for controllers that charge at full
-power.
+behind a simple greedy price-threshold rule (+7.8%). Deep RL with the same environment, actions, reward and
+sample budget did much better: DQN +10.5 ± 2.2% and PPO +7.1 ± 0.6% on the 2010 test weeks, both with a weekly
+peak below the no-battery level, and both positive in summer. DQN beats the greedy rule on average (four of five
+seeds), PPO roughly matches it. Hiding the peak input costs DQN about 7 points, so seeing the peak explains a
+large part of its advantage; the same information given to the table did not help.
 
-Against the oracle, the best learner captures about 4% of the achievable saving and the greedy rule about
-22%.
+Generalization to 2010 is weaker for every controller because demand peaks are lower (-1.2 points for DQN, -2.8
+for PPO, from validation to test), and summer weeks are hardest for controllers that charge at full power.
+Against the oracle, DQN captures about 30% of the achievable saving (38% of the 5-level oracle's), PPO 20%
+(26%), the greedy rule 22% (28%) and the best tabular agent about 4% (6%). A 5-level plan with perfect
+foresight still saves 27.5%, so a large gap remains for any learner.
 
-Future work, in order of expected value: (1) add the highest import so far to the learning state in a way
-the table can use, or use a function approximator (DQN, PPO) that can handle it; (2) tune the simple rules
-fairly; (3) test other tariffs, power limits and years; (4) add the language-model layer from section 8.
+Future work, in order of expected value: (1) tune the deep agents and the simple rules fairly, and run the
+deep agents on the same 4-feature state as the table to isolate the algorithm from the inputs; (2) richer
+inputs and a forecaster of the next hours of demand, to narrow the gap to the foresight oracle; (3) test other
+tariffs, power limits and years; (4) add the language-model layer from section 8.
 
 ---
 
@@ -387,6 +457,9 @@ uv run python scripts/run_final.py
 uv sync --extra oracle        # cvxpy, needed for the oracle
 uv run python scripts/run_oracle.py
 uv run python scripts/run_oracle_discrete.py   # about 15 minutes
+uv sync --extra oracle --extra deeprl      # torch and stable-baselines3
+uv run python scripts/run_deep_rl.py       # about 6 minutes on 10 cores
+uv run python scripts/run_deep_rl.py --mask peak_kw --tag nopeak --out results/final/deep_rl_nopeak.json
 uv run python scripts/make_report.py
 uv run pytest
 ```
@@ -402,5 +475,6 @@ uv run pytest
 | Alpha x gamma sensitivity heatmap | `reports/figures/sweep_grid_alpha_gamma_heatmap.png` |
 | Cost, peak and savings by controller (validation, test) | `reports/figures/controllers_validation.png`, `controllers_test.png` |
 | Winter and summer representative days | `reports/figures/representative_days.png` |
+| Deep RL learning curves (with the peak ablation) | `reports/figures/deep_rl_curves.png` |
 | Q-table policy heatmaps | `reports/figures/policy_heatmap_baseline.png`, `policy_heatmap_selected.png` |
 | Parameter record | `reports/tables/parameter_record.md` |
