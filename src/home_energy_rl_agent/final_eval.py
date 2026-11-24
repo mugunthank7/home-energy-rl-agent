@@ -11,7 +11,7 @@ import numpy as np
 from home_energy_rl_agent import data
 from home_energy_rl_agent.controllers import build_baselines
 from home_energy_rl_agent.env import EnergyEnv, load_env_config
-from home_energy_rl_agent.evaluate import evaluate
+from home_energy_rl_agent.evaluate import choose_starts, evaluate
 from home_energy_rl_agent.experiments import deep_merge, load_experiment, train_and_evaluate
 from home_energy_rl_agent.tariff import load_tariff_config
 
@@ -20,13 +20,21 @@ Q_CONFIGS = ["baseline", "tuned", "selected"]
 SEEDS = [42, 43, 44, 45, 46]
 WINTER_MONTHS, SUMMER_MONTHS = [1, 2], [6, 7]     # July is used; August had the household away
 PER_EPISODE_COLS = ["reward", "energy_cost", "total_cost", "peak_kw", "violations",
-                    "equivalent_full_cycles", "base_energy_cost", "base_total_cost", "base_peak_kw"]
+                    "equivalent_full_cycles", "base_energy_cost", "base_total_cost", "base_peak_kw",
+                    "final_soc", "total_cost_adj"]
 
 
 def season_starts(env: EnergyEnv, months: list[int]) -> np.ndarray:
     """Valid episode starts at midnight on days in the given months (one 7-day window per day)."""
     idx = env.series.index[env.valid_starts]
     return env.valid_starts[(idx.month.isin(months)) & (idx.hour == 0)]
+
+
+def spec_starts(env: EnergyEnv, spec: dict, seed: int = 42) -> np.ndarray:
+    """The exact episode starts evaluate() uses for a spec (so the oracle scores identical weeks)."""
+    if "months" in spec:
+        return season_starts(env, spec["months"])
+    return choose_starts(env, spec["episodes"], seed)
 
 
 def eval_specs(splits: dict) -> list[dict]:

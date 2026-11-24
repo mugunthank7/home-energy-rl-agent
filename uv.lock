@@ -995,6 +995,9 @@ agent = [
     { name = "plotly" },
     { name = "streamlit" },
 ]
+oracle = [
+    { name = "cvxpy" },
+]
 tier1 = [
     { name = "cvxpy" },
     { name = "lightgbm" },
@@ -1011,6 +1014,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", marker = "extra == 'agent'" },
+    { name = "cvxpy", marker = "extra == 'oracle'" },
     { name = "cvxpy", marker = "extra == 'tier1'" },
     { name = "gymnasium" },
     { name = "lightgbm", marker = "extra == 'tier1'" },
@@ -1027,7 +1031,7 @@ requires-dist = [
     { name = "streamlit", marker = "extra == 'agent'" },
     { name = "torch", marker = "extra == 'tier1'" },
 ]
-provides-extras = ["tier1", "agent"]
+provides-extras = ["oracle", "tier1", "agent"]
 
 [package.metadata.requires-dev]
 dev = [

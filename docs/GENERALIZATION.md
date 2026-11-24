@@ -17,12 +17,14 @@ total savings across all sweep variants, which was the coarse state grid).
 | Q-learning, plan settings | 47.53 ± 0.98 | -4.9 ± 2.2% | 4.16 ± 0.15 | 0.02 |
 | Q-learning, tuned | 46.06 ± 0.76 | -1.7 ± 1.7% | 3.99 ± 0.16 | 0.02 |
 | Q-learning, selected (coarse grid) | 44.61 ± 0.62 | +1.5 ± 1.4% | 3.47 ± 0.07 | 0.00 |
+| Oracle (perfect foresight, upper bound) | 29.17 | +35.6% | 1.55 | 0 |
 
 - The best learned controller saves about $0.70 a week (+1.5 ± 1.4%, roughly one standard deviation
   from zero). The greedy-threshold rule saves about $3.53 a week. On this simulation, RL does not beat
   the simple greedy rule.
 - Only the coarse-grid Q-learning agent beats doing nothing on test, and by a small margin.
-- "% of oracle savings" is not available yet: the oracle (Tier 1) has not been built.
+- Measured against the oracle, the best learned controller captures 4.3 ± 3.8% of the achievable saving and
+  the greedy rule 21.9% (see the next section).
 
 ## Validation to test: the drop
 
@@ -96,3 +98,62 @@ plan-settings policy on the 3,600-state grid looks noisy with no clear daily pat
   tried.
 - **The simple rules were not tuned.** Greedy and rule-based settings come straight from
   `configs/controllers.yaml`, so the comparison understates how good tuned rules could be too.
+
+
+## The oracle: how much is left on the table
+
+The oracle (`src/home_energy_rl_agent/controllers/oracle.py`) is a linear program. For each week it is
+given the full demand and price series in advance and chooses continuous charge and discharge power to
+minimize the real bill (energy plus the demand charge), under the same battery limits as the environment.
+Replaying its plans through the simulator's own battery model reproduces the same charge levels and costs, and
+tests check that its cost is never above any baseline's on the same weeks. It is not deployable, because it
+needs the future.
+
+| Test (2010) | Oracle | Greedy threshold | Q-learning, selected |
+|---|---|---|---|
+| Total cost ($/week) | 29.17 | 41.78 | 44.61 ± 0.62 |
+| Total savings | +35.6% | +7.8% | +1.5 ± 1.4% |
+| Share of the oracle's savings | 100% | 21.9% | 4.3 ± 3.8% |
+| Weekly peak (kW) | 1.55 | 3.78 | 3.47 ± 0.07 |
+| Full cycles per week | 5.2 | 2.9 | 1.8 ± 0.5 |
+
+All shares by split are in `reports/tables/generalization.md`. On validation the greedy rule captures 25.7%
+and the selected Q-learner 7.1 ± 4.6%. In the held-out summer week the oracle still saves 38.5%, while the
+learned controllers save about nothing, so there is room even where fixed rules fail.
+
+**Where the oracle's saving comes from.** On test, the no-battery weekly peak of 3.45 kW costs $17.25 in
+demand charge ($5 per kW) and the energy costs $28.04. The oracle cuts the peak to 1.55 kW (about $9.5 a
+week) and the energy cost by 23.6% (about $6.6 a week). So roughly 59% of its saving is peak shaving and 41%
+is shifting energy to cheap hours. It does this by keeping grid import almost flat (about 0.9 kW through the
+summer test day), which `reports/figures/representative_days.png` shows as a dashed line. This agrees with the
+earlier finding that the peak is what the other controllers get wrong: the greedy rule and the learners keep
+the peak at 3.5 to 4.2 kW.
+
+**Caveats on the bound.**
+- It uses continuous power, while every learned controller has 5 power levels, so part of the gap is the
+  action set and part is the missing foresight. This project did not separate the two.
+- It assumes exact knowledge of the whole week. No real controller can reach 100%.
+- The shares for Q-learning have wide error bars (a few points) because the savings themselves are small.
+
+## Leftover battery energy (terminal value)
+
+The environment does not value the energy left in the battery at the end of a week, and the controllers end
+very differently. Mean change in stored energy per test week, from a 5 kWh start: rule-based +4.25 kWh, greedy
++3.84, Q-learning plan settings +1.07, tuned +0.04, selected -1.47. A controller that ends full has paid for
+energy it did not use; one that ends emptier used its free starting charge. As a check, every controller and
+the oracle were also scored with the leftover energy valued at the cost of buying it back off-peak
+($0.08 per kWh over the 0.949 charging efficiency, about $0.084 per stored kWh).
+
+| Test (2010) total savings | Plain | Terminal-adjusted |
+|---|---|---|
+| Rule-based | -4.9% | -4.1% |
+| Greedy threshold | +7.8% | +8.5% |
+| Q-learning, plan settings | -4.9 ± 2.2% | -4.7 ± 2.2% |
+| Q-learning, tuned | -1.7 ± 1.7% | -1.7 ± 1.7% |
+| Q-learning, selected | +1.5 ± 1.4% | +1.3 ± 1.4% |
+| Oracle | +35.6% | +34.9% |
+
+No ranking changes. The adjustment trims the selected Q-learner's margin over doing nothing from 1.5 to 1.3
+points, which is still only about one standard deviation. The adjusted oracle is a separate linear program
+that also pays for energy it uses up, so it remains a valid bound under the adjusted metric. The plain metric
+is the headline throughout because it is the one the plan defines; the adjusted one is a robustness check.

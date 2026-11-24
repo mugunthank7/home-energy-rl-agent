@@ -31,4 +31,10 @@ The `tuned` hyperparameters (alpha 0.02, gamma 0.9) were chosen from single-seed
 - All controllers see identical episodes and are compared with a no-battery run on those same weeks.
 - The test split was not used for tuning. Results on it are reported once, whatever they show.
 
+## Oracle and terminal value (Phase 7)
+- The oracle is a linear program per 7-day episode (cvxpy): continuous AC-side charge and discharge power, stored energy that follows the same round-trip efficiency and bounds as the simulator, discharge capped at demand (no export), and a peak variable that the demand charge multiplies. The objective is the plain bill plus a negligible throughput term that breaks ties.
+- Because any 5-level controller is one feasible plan of this problem, the oracle's cost is a lower bound on theirs. This is checked by tests (never above any baseline on the same weeks) and by replaying plans through the simulator's `Battery` class.
+- The oracle sees the same weeks as every other controller (same start selection) and is evaluated with the same summary function.
+- The environment's reward and bill ignore energy left in the battery at the end of an episode. As a robustness check, a terminal-adjusted cost adds `(start energy - end energy) x (off-peak price / charging efficiency)`. A second LP (`oracle_adj`) optimizes that adjusted objective. The plain metric stays the headline; both are reported.
+
 (Further details are filled in as each phase lands.)

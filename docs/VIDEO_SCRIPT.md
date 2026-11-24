@@ -56,13 +56,14 @@ and the agent could not see the peak. I now charge only the peak the battery add
 peak. That does not change the best policy, but it removes a lot of noise. I also raised the violation
 penalty, because the agent was breaking battery limits on purpose when it was cheap to do so."
 
-"I did not build the linear-programming upper bound yet, so I do not report a percent of the achievable
-saving."
+"I also built an upper bound, an oracle. It is a linear program that is told the whole week of demand and
+prices in advance, and finds the cheapest possible battery plan under the same rules. No real controller can
+do that, but it tells me how much is actually achievable."
 
 ## 3:30 to 5:30 | Results
 
 **Show:** `sweep_epsilon_convergence.png` (about 20 seconds), `sweep_grid_alpha_gamma_heatmap.png`
-(about 30 seconds), then `controllers_test.png` (about 70 seconds).
+(about 30 seconds), then `controllers_test.png` (about 90 seconds, now with the oracle bar in black).
 
 "I ran seven sweeps, 235 runs, five seeds each, changing one factor at a time. This is the exploration
 sweep. A fast epsilon decay converges in about 1,000 episodes, a slow one takes about 2,500, but all end
@@ -78,6 +79,11 @@ that. The simple greedy rule saves 7.8 percent. Q-learning with the plan's setti
 doing nothing. My best version, with a coarse grid, saves 1.5 percent plus or minus 1.4, about 70 cents a
 week. So in this simulation, Q-learning does not beat the simple greedy rule."
 
+"Now the oracle. With perfect foresight it saves 35.6 percent, about 16 dollars a week. So there is a lot of
+room. The greedy rule captures about a fifth of that, my best learner about 4 percent. About 59 percent of the
+oracle's saving is flattening the weekly peak: it cuts the peak from 3.45 to 1.55 kilowatts. The other 41
+percent is moving energy to cheap hours. That matches what I found in the sweeps: the learners miss the peak."
+
 "Generalization: every controller lost ground from 2009 to 2010, including the ones that never learn, partly
 because peak demand fell from 4.3 to 3.5 kilowatts. Summer was hardest: the summer week's whole peak is
 under my 3 kilowatt charge power, so full-power charging always creates a new peak."
@@ -90,7 +96,8 @@ under my 3 kilowatt charge power, so full-power charging always creates a new pe
 "Here is a winter day and a summer day from the held-out weeks. Black is the real demand. In winter the
 full-power rule-based controller pushes the grid import above 5 kilowatts late in the evening, while the
 Q-learning agent stays at or below the home's own demand there. In summer the rule-based controller creates a 4 kilowatt spike
-that the home never had."
+that the home never had. The dashed black line is the oracle: it keeps the grid import almost flat, about
+0.9 kilowatts all day in summer. That is how you beat a demand charge."
 
 "This heatmap is what the selected agent learned: for each battery level and time of day, which action it
 prefers. It is mostly idle, with gentle charging and some evening discharge, and it never charges at full
@@ -110,8 +117,8 @@ did not tune the simple rules, so the comparison may understate them."
 ## 7:40 to 8:00 | Wrap-up
 
 "To sum up: on real data with a simulated battery, Q-learning learned to cut energy cost but only slightly
-beat doing nothing once the demand charge was included, and a simple greedy rule did better. The next steps
-are the optimal-control upper bound and a learner that can see the peak. The code, results and tables are in
+beat doing nothing once the demand charge was included, and a simple greedy rule did better. An oracle with perfect
+foresight shows about 36 percent is possible, so the next step is a learner that can see the peak. The code, results and tables are in
 the repository. Thanks for watching."
 
 ---
@@ -123,7 +130,7 @@ the repository. Thanks for watching."
 | Problem | 0:00 to 0:45 | 100 |
 | Data and environment | 0:45 to 2:00 | 160 |
 | Methods | 2:00 to 3:30 | 190 |
-| Results | 3:30 to 5:30 | 250 |
+| Results | 3:30 to 5:30 | 320 |
 | Demo | 5:30 to 7:00 | 180 |
 | Limitations and contributions | 7:00 to 7:40 | 80 |
 | Wrap-up | 7:40 to 8:00 | 55 |
@@ -136,4 +143,8 @@ the repository. Thanks for watching."
 - Is +1.5% a real win? (It is about one standard deviation from zero. Say so.)
 - Why July for summer and not August? (The household was away for much of August.)
 - Why is the coarse grid best? (Sparse visits for the fine grid, and the coarse policy is conservative.)
-- What is still missing? (The oracle upper bound, deep RL, and the language-model layer.)
+- How good is the oracle as a benchmark? (It uses continuous power and perfect foresight, so it is a loose bound
+  for 5-level controllers. I did not separate the effect of the action set from the effect of foresight.)
+- Does leftover battery energy change anything? (I checked: valuing it at the off-peak price shifts savings by
+  under one point and changes no ranking. Greedy 7.8 to 8.5 percent, my best learner 1.5 to 1.3.)
+- What is still missing? (Deep RL and the language-model layer.)

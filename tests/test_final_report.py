@@ -17,10 +17,11 @@ SPLITS = ["validation", "test", "test_winter_week", "test_summer_week",
 
 
 def fake_record(split, controller, seed, savings, n=10):
-    summary = {k: 1.0 for k, _ in fr.METRICS} | {"savings_total_pct": savings}
+    summary = {k: 1.0 for k, _ in fr.METRICS} | {"savings_total_pct": savings,
+                                                 "savings_total_adj_pct": savings - 0.5}
     per_ep = {c: [10.0 + i * 0.1 for i in range(n)] for c in
               ["reward", "energy_cost", "total_cost", "peak_kw", "violations", "equivalent_full_cycles",
-               "base_energy_cost", "base_total_cost", "base_peak_kw"]}
+               "base_energy_cost", "base_total_cost", "base_peak_kw", "final_soc", "total_cost_adj"]}
     per_ep["base_total_cost"] = [20.0] * n
     return {"split": split, "controller": controller, "seed": seed, "summary": summary, "per_episode": per_ep,
             "train_time_s": 9.0 if seed is not None else None}
@@ -34,6 +35,7 @@ def rec():
                     fake_record(sp, "greedy_threshold", None, 9.0)]
         for seed, sav in [(1, 2.0), (2, 4.0)]:
             records += [fake_record(sp, f"q_{n}", seed, sav) for n in ("baseline", "tuned", "selected")]
+        records += [fake_record(sp, "oracle", None, 40.0), fake_record(sp, "oracle_adj", None, 40.0)]
     stats = {sp: {"hours": 100, "mean_kw": 1.2, "p95_kw": 3.0, "max_kw": 6.0, "mean_weekly_peak_kw": 4.0}
              for sp in ["train", "validation", "test"]}
     return {"seeds": [1, 2], "records": records, "split_stats": stats}
@@ -41,11 +43,16 @@ def rec():
 
 def test_metrics_table_has_every_controller_and_mean_std_for_q(rec):
     df = fr.metrics_table(rec, "test")
-    assert list(df["controller"]) == [fr.LABEL[c] for c in fr.ORDER]
+    assert list(df["controller"]) == [fr.LABEL[c] for c in fr.ORDER]       # oracle is the last row
     q_row = df[df["controller"] == fr.LABEL["q_selected"]].iloc[0]
     assert q_row["total savings %"] == "3.00 ± 1.00"           # mean and std over the two seeds
     assert df[df["controller"] == fr.LABEL["rule_based"]].iloc[0]["total savings %"] == "1.00"
-    assert (df["% of oracle savings"].str.startswith("n/a")).all()
+    assert q_row["% of oracle savings"] == "7.5 ± 2.5"             # (2/40, 4/40) as percentages
+    shares = [100 * 1.5 / 39.5, 100 * 3.5 / 39.5]                 # adjusted savings of the two seeds
+    assert q_row["% of oracle (terminal-adjusted)"] == f"{np.mean(shares):.1f} ± {np.std(shares):.1f}"
+    assert df[df["controller"] == fr.LABEL["greedy_threshold"]].iloc[0]["% of oracle savings"] == "22.5"
+    assert df[df["controller"] == fr.LABEL["oracle"]].iloc[0]["% of oracle savings"] == "100.0"
+    assert q_row["total savings, terminal-adjusted %"] == "2.50 ± 1.00"
     assert df[df["controller"] == fr.LABEL["no_battery"]].iloc[0]["train time (s)"].startswith("0")
 
 
@@ -124,3 +131,16 @@ def test_parameter_record_lists_configs_and_sweeps(tmp_path):
     fr.parameter_record(tmp_path / "params.md")
     text = (tmp_path / "params.md").read_text()
     assert "capacity_kwh" in text and "sweep_alpha" in text and "| selected |" in text
+
+
+def test_table_without_oracle_says_how_to_get_it(rec):
+    rec = {**rec, "records": [r for r in rec["records"] if not r["controller"].startswith("oracle")]}
+    df = fr.metrics_table(rec, "test")
+    assert "run_oracle" in df.iloc[0]["% of oracle savings"]
+    assert list(df["controller"]) == [fr.LABEL[c] for c in fr.ORDER if c != "oracle"]
+
+
+def test_oracle_share_table_covers_every_split(rec):
+    share = fr.oracle_share_table(rec)
+    assert list(share.columns)[1:] == [fr.SPLIT_TITLE[s] for s in SPLITS]
+    assert share[share["controller"] == fr.LABEL["greedy_threshold"]].iloc[0, 1] == "22.5"

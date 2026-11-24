@@ -17,15 +17,17 @@ from home_energy_rl_agent.controllers.qlearning import QLearningAgent
 from home_energy_rl_agent.final_eval import FINAL_DIR
 from home_energy_rl_agent.reporting import FIG_DIR, TABLE_DIR
 
-ORDER = ["no_battery", "rule_based", "greedy_threshold", "q_baseline", "q_tuned", "q_selected"]
+ORDER = ["no_battery", "rule_based", "greedy_threshold", "q_baseline", "q_tuned", "q_selected", "oracle"]
 LABEL = {
     "no_battery": "No battery", "rule_based": "Rule-based", "greedy_threshold": "Greedy threshold",
     "q_baseline": "Q-learning (plan settings)", "q_tuned": "Q-learning (tuned)",
     "q_selected": "Q-learning (selected: coarse grid)",
+    "oracle": "Oracle (perfect foresight, upper bound)",
 }
 SHORT = {"no_battery": "No battery", "rule_based": "Rule-based", "greedy_threshold": "Greedy threshold",
-         "q_baseline": "Q: plan settings", "q_tuned": "Q: tuned", "q_selected": "Q: coarse grid"}
-COLORS = dict(zip(ORDER, ["#888888", "#d95f02", "#1b9e77", "#7570b3", "#e7298a", "#66a61e"], strict=True))
+         "q_baseline": "Q: plan settings", "q_tuned": "Q: tuned", "q_selected": "Q: coarse grid",
+         "oracle": "Oracle (bound)"}
+COLORS = dict(zip(ORDER, ["#888888", "#d95f02", "#1b9e77", "#7570b3", "#e7298a", "#66a61e", "#000000"], strict=True))
 SPLIT_TITLE = {
     "validation": "Validation (2009)", "test": "Test (2010)",
     "test_winter_week": "Winter week (Jan 18-24, 2010)", "test_summer_week": "Summer week (Jul 5-11, 2010)",
@@ -41,7 +43,12 @@ METRICS = [
 
 
 def load_records(path: Path = FINAL_DIR / "records.json") -> dict:
-    return json.loads(path.read_text())
+    """The final comparison records, plus the oracle's if scripts/run_oracle.py has been run."""
+    rec = json.loads(path.read_text())
+    oracle = path.parent / "oracle.json"
+    if oracle.exists():
+        rec["records"] += json.loads(oracle.read_text())["records"]
+    return rec
 
 
 def controllers_in(records: list[dict]) -> list[str]:
@@ -60,6 +67,27 @@ def train_time(records: list[dict], controller: str) -> float | None:
     return float(np.mean(t)) if t else None
 
 
+# --- Savings, with and without valuing the energy left in the battery, and the share of the oracle ---
+def savings_values(records: list[dict], split: str, controller: str, adjusted: bool) -> list[float]:
+    """Total-savings % per seed (one value for deterministic controllers)."""
+    key = "savings_total_adj_pct" if adjusted else "savings_total_pct"
+    name = "oracle_adj" if controller == "oracle" and adjusted else controller
+    return [r["summary"][key] for r in records if r["split"] == split and r["controller"] == name]
+
+
+def pct_of_oracle(records: list[dict], split: str, controller: str, adjusted: bool):
+    """(mean, std) of savings as a percentage of the oracle's savings, or None if unavailable."""
+    ref = savings_values(records, split, "oracle", adjusted)
+    if not ref or abs(ref[0]) < 1e-9:
+        return None
+    vals = [100 * v / ref[0] for v in savings_values(records, split, controller, adjusted)]
+    return float(np.mean(vals)), float(np.std(vals))
+
+
+def _fmt(controller: str, m: float, s: float, digits: int = 2) -> str:
+    return f"{m:.{digits}f} ± {s:.{digits}f}" if controller.startswith("q_") else f"{m:.{digits}f}"
+
+
 # --- Metrics table for every controller on one split ---
 def metrics_table(rec: dict, split: str) -> pd.DataFrame:
     rows = []
@@ -67,10 +95,14 @@ def metrics_table(rec: dict, split: str) -> pd.DataFrame:
         row = {"controller": LABEL[c]}
         for key, name in METRICS:
             m, s = seed_stats(rec["records"], split, c, key)
-            row[name] = f"{m:.2f} ± {s:.2f}" if c.startswith("q_") else f"{m:.2f}"
+            row[name] = _fmt(c, m, s)
+        adj = savings_values(rec["records"], split, c, adjusted=True)
+        row["total savings, terminal-adjusted %"] = _fmt(c, float(np.mean(adj)), float(np.std(adj)))
         t = train_time(rec["records"], c)
         row["train time (s)"] = f"{t:.1f}" if t else "0 (no training)"
-        row["% of oracle savings"] = "n/a (oracle not built yet)"
+        for label, adjusted in [("% of oracle savings", False), ("% of oracle (terminal-adjusted)", True)]:
+            share = pct_of_oracle(rec["records"], split, c, adjusted)
+            row[label] = "n/a (run scripts/run_oracle.py)" if share is None else _fmt(c, *share, digits=1)
         rows.append(row)
     return pd.DataFrame(rows)
 
@@ -98,6 +130,20 @@ def generalization_table(rec: dict) -> pd.DataFrame:
             row["change val to test (pts)"] = f"{t - v:+.1f}"
         else:
             row["change val to test (pts)"] = "n/a"
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def oracle_share_table(rec: dict, adjusted: bool = False) -> pd.DataFrame:
+    """Savings as a % of the oracle's savings, for every split."""
+    splits = ["validation", "test", "test_winter_week", "test_summer_week",
+              "test_winter_season", "test_summer_season"]
+    rows = []
+    for c in controllers_in(rec["records"]):
+        row = {"controller": LABEL[c]}
+        for sp in splits:
+            share = pct_of_oracle(rec["records"], sp, c, adjusted)
+            row[SPLIT_TITLE[sp]] = "n/a" if share is None else _fmt(c, *share, digits=1)
         rows.append(row)
     return pd.DataFrame(rows)
 
@@ -163,8 +209,9 @@ def plot_days(days: dict, path: Path) -> None:
         hours = np.arange(len(any_log))
         axes[0, j].plot(hours, [i["demand"] for i in any_log], "k-", lw=2, label="Demand (REAL)")
         for c, log in logs.items():
-            axes[0, j].plot(hours, [i["grid_import"] for i in log], color=COLORS[c], label=LABEL[c], lw=1.4)
-            axes[1, j].plot(hours, [i["soc"] for i in log], color=COLORS[c], lw=1.4)
+            style = "--" if c == "oracle" else "-"
+            axes[0, j].plot(hours, [i["grid_import"] for i in log], style, color=COLORS[c], label=LABEL[c], lw=1.4)
+            axes[1, j].plot(hours, [i["soc"] for i in log], style, color=COLORS[c], lw=1.4)
         axes[0, j].set(title=f"{season}", ylabel="kW")
         axes[1, j].set(ylabel="Battery SOC (SIMULATED)", ylim=(0, 1.02))
         q = next((c for c in logs if c.startswith("q_")), None)
@@ -177,8 +224,9 @@ def plot_days(days: dict, path: Path) -> None:
         ax2 = axes[2, j].twinx()
         ax2.step(hours, [i["price"] for i in any_log], where="mid", color="tab:red", alpha=0.6)
         ax2.set_ylabel("Price $/kWh (SIMULATED)", color="tab:red")
-    axes[0, 0].legend(fontsize=7)
-    fig.tight_layout()
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=len(labels), fontsize=8, frameon=False)
+    fig.tight_layout(rect=(0, 0.04, 1, 1))
     fig.savefig(path, dpi=150)
     plt.close(fig)
 
@@ -272,6 +320,22 @@ def parameter_record(path: Path) -> None:
     path.write_text("\n".join(parts) + "\n")
 
 
+def oracle_week(env) -> list[dict] | None:
+    """The oracle's plan for the week starting at index 0, as 24-hour records for the Wednesday plot."""
+    try:
+        from home_energy_rl_agent.controllers.oracle import OracleLP
+    except ImportError:
+        return None
+    try:
+        lp = OracleLP(env.battery.p, env.steps_per_episode, env.tariff.demand_charge_per_kw)
+    except ImportError:                      # cvxpy not installed
+        return None
+    d, p = env._demand_all[: env.steps_per_episode], env._price_all[: env.steps_per_episode]
+    plan = lp.solve(d, p)
+    return [{"demand": d[t], "grid_import": plan["grid_import"][t], "soc": plan["soc"][t], "action": 2,
+             "price": p[t]} for t in range(48, 72)]
+
+
 # --- Driver ---
 def report_final() -> None:
     from home_energy_rl_agent.controllers import build_baselines
@@ -282,7 +346,9 @@ def report_final() -> None:
     rec = load_records()
     TABLE_DIR.mkdir(parents=True, exist_ok=True)
     FIG_DIR.mkdir(parents=True, exist_ok=True)
-    note = ("Q-learning rows: mean ± std over 5 training seeds. Baselines are deterministic. "
+    note = ("Q-learning rows: mean ± std over 5 training seeds. Baselines and the oracle are deterministic. "
+            "'Terminal-adjusted' values the energy left in the battery at the off-peak replacement price. "
+            "'% of oracle' is savings divided by the oracle's savings under the same accounting. "
             "All numbers are simulation results (REAL demand, SIMULATED battery and tariff).")
     for split in ["validation", "test", "test_winter_season", "test_summer_season",
                   "test_winter_week", "test_summer_week"]:
@@ -292,8 +358,12 @@ def report_final() -> None:
     gen = generalization_table(rec)
     gen.to_csv(TABLE_DIR / "generalization.csv", index=False)
     stats = split_stats_table(rec)
+    share, share_adj = oracle_share_table(rec), oracle_share_table(rec, adjusted=True)
+    share.to_csv(TABLE_DIR / "oracle_share.csv", index=False)
     (TABLE_DIR / "generalization.md").write_text(
         df_to_markdown(gen, "Total savings vs no battery (%) by split", note)
+        + "\n" + df_to_markdown(share, "Savings as a % of the oracle's savings, by split", note)
+        + "\n" + df_to_markdown(share_adj, "Same, with leftover battery energy valued (terminal-adjusted)", note)
         + "\n" + df_to_markdown(stats, "Demand statistics by split (REAL data)"))
     for split in ["validation", "test"]:
         plot_controller_bars(rec, split, FIG_DIR / f"controllers_{split}.png")
@@ -307,6 +377,9 @@ def report_final() -> None:
         ctrls = {c.name: c for c in build_baselines(env, splits["train"]) if c.name != "no_battery"}
         ctrls["q_selected"] = load_agent("selected", rec["seeds"][0], env.obs_names)
         days[label] = {n: rollout(c, env, 0, keep_log=True)[1][48:72] for n, c in ctrls.items()}
+        plan = oracle_week(env)
+        if plan is not None:
+            days[label]["oracle"] = plan
     plot_days(days, FIG_DIR / "representative_days.png")
 
     # Q-table policy heatmaps for the plan's baseline grid and the selected coarse grid.

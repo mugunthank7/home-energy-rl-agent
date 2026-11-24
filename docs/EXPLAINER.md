@@ -84,3 +84,14 @@ Plain-English notes so each module can be explained on video. One entry per modu
 - **Policy heatmap:** for each battery level and hour, the action the Q-table prefers. Light grey is idle, red is charge, blue is discharge.
 - **Parameter record:** a table of every setting used, regenerated from the config files and result counts.
 - **Missing on purpose:** the "% of oracle savings" column says n/a until the Tier 1 oracle exists.
+
+## controllers/oracle.py and scripts/run_oracle.py (Phase 7, Tier 1)
+- **What it is:** a best-case reference. It is told the whole week of demand and prices in advance and finds the cheapest possible battery plan. No real controller can do this, because nobody knows next week's demand.
+- **How:** a linear program (cvxpy). The unknowns are charge power, discharge power and the weekly peak for each hour. The rules are the same as the simulator: battery size and power limit, efficiency, charge between 10% and 100%, no selling back to the grid.
+- **Objective:** minimize the real bill: energy cost plus the demand charge on the weekly peak.
+- **Why it is an upper bound:** every plan any controller could follow is allowed by these rules, so the oracle's cost can never be higher than theirs.
+- **How we checked it:** tests confirm the plan obeys every rule, matches the simulator's battery when replayed, and is never worse than any baseline on the same weeks.
+- **% of oracle savings:** a controller's savings divided by the oracle's savings on the same weeks. 100% would be perfect, 0% is no better than doing nothing, and negative means worse than doing nothing.
+- **What it taught us:** about 59% of the oracle's saving is flattening the weekly peak and 41% is moving energy to cheap hours. The learners and the greedy rule mostly miss the peak part.
+- **Leftover energy:** the oracle also comes in an adjusted version that pays for battery energy it uses up, so the comparison stays fair when we credit or charge for energy left in the battery.
+- **Limit:** it uses smooth power levels, while the learned controllers pick from 5 levels, so part of the gap to the oracle is the action set, not just the missing foresight.

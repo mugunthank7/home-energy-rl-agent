@@ -13,7 +13,7 @@ from gymnasium import spaces
 
 from home_energy_rl_agent.battery import Battery, BatteryParams
 from home_energy_rl_agent.data import valid_episode_starts
-from home_energy_rl_agent.tariff import Tariff, load_tariff_config
+from home_energy_rl_agent.tariff import OFF_PEAK, Tariff, load_tariff_config
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -151,6 +151,15 @@ class EnergyEnv(gym.Env):
             info["episode"] = self.episode_summary()
         return self._obs(), reward, False, truncated, info
 
+    @property
+    def terminal_value_per_kwh(self) -> float:
+        """Replacement value of one stored kWh: the off-peak price of buying it back, over efficiency.
+
+        The base reward ignores energy left in the battery at the end of an episode. This value is
+        used only for the terminal-adjusted comparison (see docs/METHODOLOGY.md).
+        """
+        return float(self.tariff.price_by_period[OFF_PEAK] / self.battery.p.eta_one_way)
+
     # --- Episode totals (energy cost and the demand charge on the episode peak) ---
     def episode_summary(self) -> dict:
         demand_cost = self.tariff.demand_charge_per_kw * self.peak
@@ -162,5 +171,6 @@ class EnergyEnv(gym.Env):
             "peak_kw": self.peak,
             "violations": self.totals["violations"],
             "equivalent_full_cycles": self.totals["throughput_kwh"] / (2 * cap),
+            "final_soc": self.battery.soc,
             "demand_kwh": self.totals["demand_kwh"],
         }

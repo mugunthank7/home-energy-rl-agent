@@ -28,7 +28,8 @@ rule-based, greedy threshold, Q-learning), seven parameter sweeps, and a held-ou
 
 The main finding is a negative one, and we report it plainly: in this simulation, Q-learning with a
 discretized state beats doing nothing only by a small margin and is clearly worse than a simple greedy
-price-threshold rule.
+price-threshold rule. An optimal-control oracle with perfect foresight shows that much more is possible
+(about 36% savings on the test year), so the shortfall is in the learner and its inputs, not in the problem.
 
 ## 2. Data and preprocessing
 
@@ -109,7 +110,15 @@ weight 0.5, violation weight 1) trained a poor agent. The default is now:
 The reward also contains violation and throughput terms, so it is not exactly the bill. Controllers are
 therefore compared on bill metrics, not on reward.
 
-**Tests** (`tests/`, 71 passing). Energy conservation, charge level always in bounds, an idle battery
+**What the bill ignores: leftover battery energy.** The weekly bill does not value the energy left in the
+battery at the end of an episode, and the controllers end very differently (per test week, from a 5 kWh
+start: rule-based +4.25 kWh, greedy +3.84, selected Q-learning -1.47). A controller that ends full has paid
+for energy it did not use; one that ends emptier used its free starting charge. We therefore also report a
+terminal-adjusted cost that values leftover energy at the off-peak price of buying it back (about $0.084 per
+stored kWh). It changes no ranking (section 6.3 and `docs/GENERALIZATION.md`), so the plain bill stays the
+headline, with the adjusted figure as a robustness check.
+
+**Tests** (`tests/`, 85 passing). Energy conservation, charge level always in bounds, an idle battery
 equals demand times price, identical results under the same seed, the equivalence of the reward variants,
 and the data-cleaning rules.
 
@@ -140,8 +149,17 @@ Three Q-learning versions are compared in the final test:
 
 "Selected" follows a rule written down before the test split was touched: the sweep variant with the
 highest mean validation total savings. "Tuned" came from single-seed validation scans. Both choices were
-made on validation data only. The oracle upper bound (a linear program with perfect foresight) and deep RL
-are not built yet.
+made on validation data only.
+
+5. **Oracle (upper bound).** A linear program that is given the whole week of demand and prices in advance and
+   chooses continuous charge and discharge power to minimize the real bill (energy plus the demand charge),
+   under the same battery limits as the environment. Every plan a 5-level controller can follow is one
+   feasible plan of this problem, so the oracle's cost is a lower bound on theirs. It cannot be deployed,
+   because it needs the future. Tests check that its plans obey the constraints, replay in the simulator's
+   battery model with the same costs, and never cost more than any baseline on the same weeks. A second
+   version also pays for stored energy it uses up, for the terminal-adjusted comparison.
+
+Deep RL (DQN, PPO) is not built.
 
 ## 5. Experiments
 
@@ -215,13 +233,26 @@ reward was changed.
 | Q-learning, plan settings | 47.53 ± 0.98 | -4.9 ± 2.2% | 4.16 ± 0.15 | 0.02 | 4.82 ± 0.24 |
 | Q-learning, tuned | 46.06 ± 0.76 | -1.7 ± 1.7% | 3.99 ± 0.16 | 0.02 | 5.11 ± 0.16 |
 | Q-learning, selected | 44.61 ± 0.62 | 1.5 ± 1.4% | 3.47 ± 0.07 | 0.00 | 1.84 ± 0.52 |
+| Oracle (upper bound) | 29.17 | 35.6% | 1.55 | 0 | 5.24 |
 
 *Table 4 (`reports/tables/final_metrics_test.md`; figure `reports/figures/controllers_test.png`). Error
-figures are std over 5 training seeds. The "% of oracle savings" column is not reported because the oracle
-has not been built.*
+figures are std over 5 training seeds.*
+
+| Controller | Share of the oracle's savings | Total savings, terminal-adjusted |
+|---|---|---|
+| Rule-based | -13.7% | -4.1% |
+| Greedy threshold | 21.9% | 8.5% |
+| Q-learning, plan settings | -13.8 ± 6.1% | -4.7 ± 2.2% |
+| Q-learning, tuned | -4.7 ± 4.7% | -1.7 ± 1.7% |
+| Q-learning, selected | 4.3 ± 3.8% | 1.3 ± 1.4% |
+| Oracle | 100% | 34.9% |
+
+*Table 5. Test split. The share of the oracle is savings divided by the oracle's savings (plain bill).
+Adjusted savings value leftover battery energy; the adjusted oracle is a separate linear program, so it is
+still an upper bound under that metric.*
 
 The best learned controller saves about $0.70 a week, roughly one standard deviation from zero. The greedy
-rule saves about $3.53 a week.
+rule saves about $3.53 a week, and the oracle $16.14 a week.
 
 ## 7. Analysis
 
@@ -248,6 +279,16 @@ savings drop (3.4%).
 reward converges: about 1,000 episodes for the fast decay, 2,000 for the exponential, and 2,500 for the slow
 and linear schedules. The final greedy policies are close (-1.7% to -3.9%, within the noise). The schedule
 changes how fast the agent learns, not where it ends up.
+
+**How far from the best possible.** On the 2010 test weeks the oracle saves 35.6%, and about 59% of that is
+peak shaving: it cuts the weekly peak from 3.45 kW to 1.55 kW (worth about $9.50 a week at $5 per kW) and the
+energy cost by 23.6% (about $6.60 a week). It does this by keeping grid import almost flat, around 0.9 kW
+across the summer test day (`reports/figures/representative_days.png`). The greedy rule captures 21.9% of the
+oracle's saving and the best Q-learner 4.3 ± 3.8%. The learners and the greedy rule keep the weekly peak at
+3.5 to 4.2 kW, which is the part of the problem they miss, in line with the sweep findings above. Even in the
+held-out summer week, where full-power charging backfires, the oracle saves 38.5%. Part of the gap to the
+oracle is not learning but the action set (5 power levels against continuous power) and the missing
+foresight; this project did not separate those.
 
 **Generalization.** Every controller loses ground from validation to test, including the two that never
 learn (rule-based 0.0% to -4.9%, greedy 9.6% to 7.8%). Part of the drop is therefore a property of the data,
@@ -280,8 +321,11 @@ grid looks noisy with no clear daily pattern.
   The test numbers are unbiased but come from one run of the protocol.
 - The rule-based and greedy controllers were not tuned, so the comparison understates how good tuned rules
   could be.
-- The oracle upper bound and deep RL are not built, so we cannot say how much of the achievable saving each
-  controller captures.
+- The oracle uses continuous power and perfect foresight, so it is a loose bound for 5-level controllers that
+  must act without knowing the future. We did not compute a bound restricted to the 5 power levels, and deep
+  RL (DQN, PPO) is not built.
+- The environment ignores energy left in the battery at the end of a week. The terminal-adjusted check shifts
+  savings by under one point and changes no ranking, but it is a choice of replacement price (off-peak).
 
 ## 8. Agentic extension
 
@@ -306,8 +350,11 @@ learning rate, grid resolution and the peak-related reward weight. Generalizatio
 controller because demand peaks are lower, and summer weeks are hardest for controllers that charge at full
 power.
 
-Future work, in order of expected value: (1) build the linear-programming oracle to turn every result
-into a percentage of the achievable saving; (2) add the highest import so far to the learning state in a way
+Against the oracle, the best learner captures about 4% of the achievable saving and the greedy rule about
+22%.
+
+Future work, in order of expected value: (1) compute a bound restricted to the 5 power levels, to separate
+the cost of the action set from the cost of missing foresight; (2) add the highest import so far to the learning state in a way
 the table can use, or use a function approximator (DQN, PPO) that can handle it; (3) tune the simple rules
 fairly; (4) test other tariffs, power limits and years; (5) add the language-model layer from section 8.
 
@@ -323,6 +370,8 @@ uv run python scripts/make_eda.py
 uv run python scripts/run_baselines.py
 uv run python scripts/run_experiment.py all --workers 8
 uv run python scripts/run_final.py
+uv sync --extra oracle        # cvxpy, needed for the oracle
+uv run python scripts/run_oracle.py
 uv run python scripts/make_report.py
 uv run pytest
 ```

@@ -19,7 +19,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Tier 1: oracle + deep RL
+# Tier 1: the optimal-control oracle needs only cvxpy; deep RL and forecasting need the rest
+oracle = ["cvxpy"]
 tier1 = ["cvxpy", "stable-baselines3", "torch", "lightgbm"]
 # Tier 2: agent, MCP server, app
 agent = ["anthropic", "mcp", "streamlit", "plotly"]

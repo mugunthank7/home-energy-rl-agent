@@ -45,6 +45,16 @@ def rollout(controller: Controller, env: EnergyEnv, start: int, keep_log: bool =
     return summary, log
 
 
+def adjusted_total_cost(total_cost, final_soc, env: EnergyEnv):
+    """Bill plus the replacement cost of energy used from the starting charge (credit if it ended fuller).
+
+    The plain bill never values the energy left in the battery, so a controller that drains its
+    starting charge gets it for free and one that ends full pays for energy it does not use.
+    """
+    p = env.battery.p
+    return total_cost + (p.soc_start - final_soc) * p.capacity_kwh * env.terminal_value_per_kwh
+
+
 def _run_all(controller, env, starts) -> pd.DataFrame:
     rows = []
     for s in starts:
@@ -68,8 +78,13 @@ def evaluate(
     base = _run_all(NoBattery(actions), env, starts)
     for col in ("energy_cost", "total_cost", "peak_kw"):
         df[f"base_{col}"] = base[col]
+    df["total_cost_adj"] = adjusted_total_cost(df["total_cost"], df["final_soc"], env)
+    return EvalResult(controller.name, df, summarize(df, controller.name, len(starts), seed))
 
-    summary = {"controller": controller.name, "episodes": len(starts), "seed": seed}
+
+def summarize(df: pd.DataFrame, name: str, episodes: int, seed: int) -> dict:
+    """Means, stds and savings vs the no-battery columns (base_*) of a per-episode frame."""
+    summary = {"controller": name, "episodes": episodes, "seed": seed}
     for m in EPISODE_METRICS:
         summary[f"{m}_mean"] = float(df[m].mean())
         summary[f"{m}_std"] = float(df[m].std(ddof=0))
@@ -77,7 +92,10 @@ def evaluate(
     summary["savings_energy_pct"] = _saving(df["energy_cost"], df["base_energy_cost"])
     summary["savings_total_pct"] = _saving(df["total_cost"], df["base_total_cost"])
     summary["peak_reduction_pct"] = _saving(df["peak_kw"], df["base_peak_kw"])
-    return EvalResult(controller.name, df, summary)
+    if "total_cost_adj" in df:          # the no-battery run never changes its charge, so adj == plain
+        summary["savings_total_adj_pct"] = _saving(df["total_cost_adj"], df["base_total_cost"])
+        summary["final_soc_mean"] = float(df["final_soc"].mean())
+    return summary
 
 
 def _saving(value: pd.Series, base: pd.Series) -> float:
