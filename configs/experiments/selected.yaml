@@ -1,0 +1,29 @@
+# Selected by a rule fixed before touching the test split: the sweep variant with the highest mean
+# validation total savings (coarse state grid, see docs/SWEEP_FINDINGS.md). Plan hyperparameters otherwise.
+name: selected
+env_overrides: {}                 # merged into configs/env.yaml for this experiment
+seeds: [42, 43, 44, 45, 46]   # the final evaluation uses 5 seeds
+qlearning:
+  alpha: 0.1
+  gamma: 0.95
+  epsilon_start: 1.0
+  epsilon_end: 0.05
+  epsilon_schedule: exponential     # linear | exponential_fast | exponential | exponential_slow
+  # Fraction of training at which epsilon reaches epsilon_end, per schedule.
+  schedule_fractions:
+    linear: 0.8
+    exponential_fast: 0.3
+    exponential: 0.6
+    exponential_slow: 0.9
+  episodes: 3000
+  eval_every: 250                   # greedy validation check during training (learning curve)
+  eval_episodes: 20
+discretization:
+  soc_bins: 5
+  hour_buckets: 6
+  demand_bins: 3
+  tariff_periods: 3
+splits:
+  train: [2007, 2008]
+  validation: [2009]
+  test: [2010]

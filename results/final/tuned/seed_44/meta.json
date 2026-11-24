@@ -1,0 +1,32 @@
+{
+  "params": {
+    "alpha": 0.02,
+    "gamma": 0.9,
+    "epsilon_start": 1.0,
+    "epsilon_end": 0.05,
+    "epsilon_schedule": "exponential",
+    "schedule_fractions": {
+      "linear": 0.8,
+      "exponential_fast": 0.3,
+      "exponential": 0.6,
+      "exponential_slow": 0.9
+    },
+    "episodes": 3000,
+    "eval_every": 250,
+    "eval_episodes": 20
+  },
+  "n_actions": 5,
+  "idle": 2,
+  "demand_edges": [
+    0.2899333333333333,
+    0.4802933333333333,
+    1.1450533333333346,
+    1.8255800000000002
+  ],
+  "soc_min": 0.1,
+  "soc_max": 1.0,
+  "soc_bins": 10,
+  "hour_buckets": 24,
+  "tariff_periods": 3,
+  "peak_edges": []
+}

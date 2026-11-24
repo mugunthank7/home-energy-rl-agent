@@ -71,3 +71,16 @@ Plain-English notes so each module can be explained on video. One entry per modu
 - **Aggregation:** `make_report.py` groups runs by variant, computes mean and std over seeds, and writes tables to `reports/tables/` and figures to `reports/figures/`.
 - **Figures per sweep:** convergence curves with seed bands, and final savings, peak and violations with error bars. The alpha x gamma grid gets a heatmap.
 - **Reward weights:** that sweep changes the reward itself, so compare its variants on the bill metrics, not on reward.
+
+## final_eval.py and final_report.py (Phase 6)
+- **What they do:** the final, fair comparison of every controller, then all the tables and figures for the report.
+- **Test discipline:** the 2010 test data is only used here, after the Q-learning settings were chosen on the 2009 validation data. Choosing on the test data would make the results look better than they are.
+- **The three Q-learning versions:** `baseline` (the plan's settings), `tuned` (lower alpha and gamma) and `selected` (coarse state grid). The rule for `selected` was fixed beforehand: best mean validation savings across all sweep variants.
+- **Training:** each version is trained on 2007-2008 with 5 seeds, one at a time, so the recorded training times are honest.
+- **Splits scored:** validation, 2010 test, a winter week and a summer week, plus all Jan-Feb weeks and all Jun-Jul weeks of 2010 (one window per day).
+- **Fairness:** all controllers get the same episodes, and every score is measured against a no-battery run on those same weeks.
+- **Error bars:** Q-learning bars show the std over seeds. The rule-based and greedy controllers are deterministic, so their bars show the standard error over weeks.
+- **Representative days:** the Wednesday of the held-out winter and summer weeks, showing demand, grid import, battery level and the Q-learning actions.
+- **Policy heatmap:** for each battery level and hour, the action the Q-table prefers. Light grey is idle, red is charge, blue is discharge.
+- **Parameter record:** a table of every setting used, regenerated from the config files and result counts.
+- **Missing on purpose:** the "% of oracle savings" column says n/a until the Tier 1 oracle exists.

@@ -25,4 +25,10 @@ The reward is not the bill: it also contains violation and cycling penalties, so
 ## Tuning and selection bias
 The `tuned` hyperparameters (alpha 0.02, gamma 0.9) were chosen from single-seed scans on the VALIDATION split, so validation numbers for `tuned` are slightly optimistic. The 2010 test split has not been used and gives the clean comparison.
 
+## Test protocol (Phase 6)
+- Q-learning configs `baseline`, `tuned` and `selected` were fixed using the validation sweeps (2009) before the 2010 test split was evaluated. `selected` follows a rule written beforehand: the sweep variant with the highest mean validation total savings.
+- Each config is trained on 2007-2008 with 5 seeds and scored on validation, on 100 sampled test weeks of 2010, on one held-out winter week (Jan 18-24) and one summer week (Jul 5-11), and on all Jan-Feb and Jun-Jul 2010 weeks that start at midnight. July is used for summer because the household was away for much of August.
+- All controllers see identical episodes and are compared with a no-battery run on those same weeks.
+- The test split was not used for tuning. Results on it are reported once, whatever they show.
+
 (Further details are filled in as each phase lands.)

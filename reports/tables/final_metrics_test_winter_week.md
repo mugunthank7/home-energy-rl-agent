@@ -1,0 +1,12 @@
+### Winter week (Jan 18-24, 2010)
+
+Q-learning rows: mean ± std over 5 training seeds. Baselines are deterministic. All numbers are simulation results (REAL demand, SIMULATED battery and tariff).
+
+| controller | avg episode reward | energy cost ($/wk) | total cost incl. demand charge ($/wk) | energy savings % | total savings % | peak (kW) | peak reduction % | violations / wk | full cycles / wk | train time (s) | % of oracle savings |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| No battery | -42.85 | 42.85 | 69.18 | 0.00 | 0.00 | 5.27 | 0.00 | 0.00 | 0.00 | 0 (no training) | n/a (oracle not built yet) |
+| Rule-based | -118.61 | 35.04 | 64.06 | 18.22 | 7.39 | 5.80 | -10.24 | 8.00 | 4.38 | 0 (no training) | n/a (oracle not built yet) |
+| Greedy threshold | -76.10 | 35.26 | 61.59 | 17.71 | 10.97 | 5.27 | 0.00 | 4.00 | 4.19 | 0 (no training) | n/a (oracle not built yet) |
+| Q-learning (plan settings) | -42.93 ± 3.62 | 41.20 ± 0.48 | 68.28 ± 3.69 | 3.85 ± 1.12 | 1.30 ± 5.34 | 5.42 ± 0.73 | -2.85 ± 13.96 | 0.00 ± 0.00 | 4.88 ± 0.68 | 9.4 | n/a (oracle not built yet) |
+| Q-learning (tuned) | -39.96 ± 4.27 | 40.54 ± 1.08 | 65.22 ± 4.26 | 5.39 ± 2.52 | 5.72 ± 6.16 | 4.94 ± 0.75 | 6.27 ± 14.22 | 0.00 ± 0.00 | 5.33 ± 0.67 | 9.5 | n/a (oracle not built yet) |
+| Q-learning (selected: coarse grid) | -40.24 ± 2.58 | 41.47 ± 0.95 | 66.17 ± 2.62 | 3.22 ± 2.22 | 4.34 ± 3.79 | 4.94 ± 0.40 | 6.17 ± 7.55 | 0.00 ± 0.00 | 1.98 ± 0.46 | 9.3 | n/a (oracle not built yet) |

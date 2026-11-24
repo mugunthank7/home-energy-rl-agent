@@ -4,7 +4,7 @@ Reinforcement learning + LLM agent energy manager for a home battery, using real
 
 > **Real vs simulated:** demand is REAL (UCI Individual Household Electric Power Consumption, one French household, 2006-2010). The battery, tariff, and any solar are SIMULATED. Savings are simulation results, not field results.
 
-Status: Phase 5 done (data pipeline, EDA, simulated environment, baselines, Q-learning, 7 parameter sweeps + alpha x gamma grid). Results will be added only from real runs saved in `results/`.
+Status: Phase 6 done (data pipeline, EDA, simulated environment, baselines, Q-learning, 7 parameter sweeps, generalization test on 2010). Tier 0 is complete. Results will be added only from real runs saved in `results/`.
 
 ## Quickstart
 ```bash
@@ -53,3 +53,22 @@ Re-create with `uv run python scripts/run_experiment.py all --workers 8` and `uv
 The plan's baseline settings do not beat doing nothing (-2.2 ± 3.3%); the best sweep settings reach about
 +1 to +3%, well below the greedy rule's +9.6%. The 5-seed std is 1 to 3 points, so many gaps between
 neighbouring values are within noise (see the findings doc for which effects are clear).
+
+## Generalization test: train 2007-2008, test 2010 (100 sampled weeks)
+From `results/final/records.json`; full tables in [`docs/GENERALIZATION.md`](docs/GENERALIZATION.md). Q-learning rows are mean ± std over 5 seeds.
+The 2010 split was used only after the Q-learning configs were fixed on validation.
+
+| Controller | Total cost ($/week) | Total savings | Peak (kW) |
+|---|---|---|---|
+| No battery | 45.31 | 0% | 3.45 |
+| Rule-based | 47.51 | -4.9% | 4.95 |
+| Greedy threshold | 41.78 | +7.8% | 3.78 |
+| Q-learning, plan settings | 47.53 ± 0.98 | -4.9 ± 2.2% | 4.16 ± 0.15 |
+| Q-learning, tuned | 46.06 ± 0.76 | -1.7 ± 1.7% | 3.99 ± 0.16 |
+| Q-learning, selected (coarse grid) | 44.61 ± 0.62 | +1.5 ± 1.4% | 3.47 ± 0.07 |
+
+The best learned controller is only slightly better than doing nothing and clearly worse than the simple greedy rule.
+Every controller loses ground from 2009 to 2010, and summer weeks are hardest for controllers that charge at full power
+(the summer week's whole peak is below the 3 kW charge power). The oracle upper bound (Tier 1) is not built yet, so there is no "% of oracle" number.
+
+Figures: `reports/figures/controllers_test.png`, `representative_days.png`, `policy_heatmap_*.png`. The settings used are recorded in `reports/tables/parameter_record.md`.
