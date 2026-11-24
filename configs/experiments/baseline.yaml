@@ -1,0 +1,19 @@
+# Baseline Q-learning experiment (stub; the runner arrives in Phase 5).
+name: baseline
+seeds: [42, 43, 44]
+qlearning:
+  alpha: 0.1
+  gamma: 0.95
+  epsilon_start: 1.0
+  epsilon_end: 0.05
+  epsilon_schedule: exponential
+  episodes: 3000
+discretization:
+  soc_bins: 10
+  hour_buckets: 24
+  demand_bins: 5
+  tariff_periods: 3
+splits:
+  train: [2007, 2008]
+  validation: [2009]
+  test: [2010]

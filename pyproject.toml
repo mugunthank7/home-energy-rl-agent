@@ -1,0 +1,39 @@
+[project]
+name = "home-energy-rl-agent"
+version = "0.1.0"
+description = "Reinforcement learning + LLM agent energy manager for a home battery, using real household power data (UCI)."
+readme = "README.md"
+authors = [
+    { name = "Mugunthan Kesavan", email = "74373098+mugunthank7@users.noreply.github.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "pandas",
+    "pyarrow",
+    "gymnasium",
+    "matplotlib",
+    "pydantic",
+    "pyyaml",
+    "requests",
+]
+
+[project.optional-dependencies]
+# Tier 1: oracle + deep RL
+tier1 = ["cvxpy", "stable-baselines3", "torch", "lightgbm"]
+# Tier 2: agent, MCP server, app
+agent = ["anthropic", "mcp", "streamlit", "plotly"]
+
+[dependency-groups]
+dev = ["pytest", "ruff"]
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
