@@ -1,0 +1,10 @@
+# Settings for the non-learning baseline controllers.
+rule_based:
+  charge_soc_max: 0.90        # charge in off-peak only while SOC is below this
+  discharge_soc_floor: 0.15   # discharge in on-peak only while SOC is above this
+greedy_threshold:
+  price_low_percentile: 40    # charge (gently) when price is below this percentile of train prices
+  price_high_percentile: 70   # discharge when price is above this percentile of train prices
+  charge_soc_max: 0.90
+  discharge_soc_floor: 0.15
+  discharge_high_demand_kw: 2.0   # discharge at the high rate only if demand is at least this

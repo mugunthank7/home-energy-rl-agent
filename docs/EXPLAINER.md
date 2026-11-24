@@ -38,3 +38,13 @@ Plain-English notes so each module can be explained on video. One entry per modu
 - **Logging:** every step returns an info dict (demand, action, SOC, grid import, price, cost, peak, violation). All the plots are drawn from this.
 - **Episode summary:** at the end it reports energy cost, demand charge, total cost, peak, violations, and equivalent full cycles.
 - **Tests:** energy conservation, SOC always in bounds, an idle battery equals demand times price, and identical results for the same seed.
+
+## controllers/ and evaluate.py (Phase 3)
+- **What they do:** the non-learning baselines the Q-learning agent must beat, plus one function that scores any controller fairly.
+- **Shared interface:** every controller has `act(obs) -> action` and `reset()`. The env, `evaluate()` and plots never need to know which controller they are using.
+- **No-battery:** always idle. Every "savings %" in the project is measured against this.
+- **Rule-based:** charge at full rate in off-peak hours while SOC is under 90%; discharge at full rate in on-peak hours while SOC is above 15%; otherwise idle.
+- **Greedy threshold:** compares the current price to percentiles of TRAIN prices. It charges gently (low rate) when cheap, and discharges at a rate that follows current demand when expensive.
+- **evaluate():** picks the episode start points once from a seed, then runs the controller and a no-battery reference on those exact same episodes. That is what makes comparisons fair.
+- **Metrics:** reward, energy cost, total cost (energy plus demand charge), peak kW, violations, equivalent full cycles, and savings vs no-battery. Savings use the ratio of mean costs so one cheap week cannot dominate.
+- **Key lesson from the first run:** charging at full rate can create a new demand peak, so a controller can lower the energy bill and still lose on the demand charge. This is the trade-off the RL agent has to learn.
