@@ -1,0 +1,6 @@
+# Discount gamma (how much future savings count).
+name: sweep_gamma
+base: baseline            # the plan's hyperparameters; one factor changes at a time
+seeds: [42, 43, 44, 45, 46]
+factor: qlearning.gamma
+values: [0.8, 0.9, 0.95, 0.99]

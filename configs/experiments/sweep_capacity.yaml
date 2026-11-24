@@ -1,0 +1,6 @@
+# Battery capacity in kWh (SIMULATED). Power limit stays 3 kW.
+name: sweep_capacity
+base: baseline            # the plan's hyperparameters; one factor changes at a time
+seeds: [42, 43, 44, 45, 46]
+factor: env_overrides.battery.capacity_kwh
+values: [5, 10, 13.5, 20]

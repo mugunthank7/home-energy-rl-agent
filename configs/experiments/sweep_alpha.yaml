@@ -1,0 +1,6 @@
+# Learning rate alpha (how fast Q-values move toward new evidence).
+name: sweep_alpha
+base: baseline            # the plan's hyperparameters; one factor changes at a time
+seeds: [42, 43, 44, 45, 46]
+factor: qlearning.alpha
+values: [0.01, 0.05, 0.1, 0.3]

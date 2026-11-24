@@ -1,0 +1,6 @@
+# Number of training episodes.
+name: sweep_episodes
+base: baseline            # the plan's hyperparameters; one factor changes at a time
+seeds: [42, 43, 44, 45, 46]
+factor: qlearning.episodes
+values: [500, 1500, 3000, 6000]

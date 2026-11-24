@@ -1,0 +1,13 @@
+# Reward weights: cost vs peak vs cycling. Rewards differ across variants, so compare bill metrics.
+name: sweep_reward
+base: baseline            # the plan's hyperparameters; one factor changes at a time
+seeds: [42, 43, 44, 45, 46]
+variants:
+  - label: default (peak 5, cycle 0.01)
+    set: {env_overrides.reward.w_peak: 5.0, env_overrides.reward.w_cycle: 0.01}
+  - label: cost-focused (peak 0.5)
+    set: {env_overrides.reward.w_peak: 0.5, env_overrides.reward.w_cycle: 0.01}
+  - label: peak-focused (peak 15)
+    set: {env_overrides.reward.w_peak: 15.0, env_overrides.reward.w_cycle: 0.01}
+  - label: cycle-averse (cycle 0.2)
+    set: {env_overrides.reward.w_peak: 5.0, env_overrides.reward.w_cycle: 0.2}

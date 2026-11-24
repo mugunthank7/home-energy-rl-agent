@@ -59,3 +59,15 @@ Plain-English notes so each module can be explained on video. One entry per modu
 - **Violation penalty:** at 1 point, the agent happily broke battery limits whenever a half-delivered discharge shaved a peak. At 10 points it stops.
 - **Evaluation:** greedy policy (no exploration) on validation weeks the agent never trained on, 3 seeds, against the baselines on the same weeks.
 - **Honest outcome:** Q-learning beats doing nothing but loses clearly to the simple greedy rule (see README). The sweeps in Phase 5 explore why.
+
+## experiments.py, reporting.py, run_experiment.py, make_report.py (Phase 5)
+- **What they do:** run many Q-learning experiments from config files, save each run, then turn the saved runs into tables and plots.
+- **Sweep configs:** each `configs/experiments/sweep_*.yaml` names a base experiment (the plan's baseline) and what to change: one factor at a time, a two-factor grid, or a list of named variants. Changes use dotted paths such as `qlearning.alpha` or `env_overrides.battery.capacity_kwh`.
+- **Why one factor at a time:** if only alpha changes, any difference in results can be blamed on alpha.
+- **Runs:** each (variant, seed) trains on the train split and is scored on the validation split. Every run is saved as `results/<sweep>/<run_id>.json` with its config, metrics, and learning curve.
+- **Seeds:** 5 seeds per variant. Reporting mean ± std shows whether a difference is real or just seed luck.
+- **Parallel and resumable:** runs go in parallel across CPU cores, and finished runs are skipped on a re-run.
+- **One training function:** the sweeps and `train_qlearning.py` share it. We checked that the refactor reproduces the earlier numbers exactly.
+- **Aggregation:** `make_report.py` groups runs by variant, computes mean and std over seeds, and writes tables to `reports/tables/` and figures to `reports/figures/`.
+- **Figures per sweep:** convergence curves with seed bands, and final savings, peak and violations with error bars. The alpha x gamma grid gets a heatmap.
+- **Reward weights:** that sweep changes the reward itself, so compare its variants on the bill metrics, not on reward.

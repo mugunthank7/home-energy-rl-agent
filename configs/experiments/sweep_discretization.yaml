@@ -1,0 +1,11 @@
+# State grid resolution. medium is the plan's 10x24x5x3 grid.
+name: sweep_discretization
+base: baseline            # the plan's hyperparameters; one factor changes at a time
+seeds: [42, 43, 44, 45, 46]
+variants:
+  - label: coarse (5x6x3x3)
+    set: {discretization.soc_bins: 5, discretization.hour_buckets: 6, discretization.demand_bins: 3}
+  - label: medium (10x24x5x3)
+    set: {discretization.soc_bins: 10, discretization.hour_buckets: 24, discretization.demand_bins: 5}
+  - label: fine (20x24x10x3)
+    set: {discretization.soc_bins: 20, discretization.hour_buckets: 24, discretization.demand_bins: 10}

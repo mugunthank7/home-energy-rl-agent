@@ -1,0 +1,6 @@
+# Epsilon decay schedule: exploration vs exploitation.
+name: sweep_epsilon
+base: baseline            # the plan's hyperparameters; one factor changes at a time
+seeds: [42, 43, 44, 45, 46]
+factor: qlearning.epsilon_schedule
+values: [linear, exponential_fast, exponential, exponential_slow]

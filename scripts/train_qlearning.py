@@ -7,7 +7,6 @@ Usage: uv run python scripts/train_qlearning.py baseline   (or: tuned, plan_rewa
 The 2010 test split is not used here.
 """
 import argparse
-import copy
 import json
 from pathlib import Path
 
@@ -21,10 +20,9 @@ import matplotlib.pyplot as plt
 
 from home_energy_rl_agent import data
 from home_energy_rl_agent.controllers import build_baselines
-from home_energy_rl_agent.controllers.base import ActionMap
-from home_energy_rl_agent.controllers.qlearning import Discretizer, QLearningAgent
 from home_energy_rl_agent.env import EnergyEnv, load_env_config
 from home_energy_rl_agent.evaluate import evaluate
+from home_energy_rl_agent.experiments import deep_merge, train_and_evaluate
 from home_energy_rl_agent.tariff import load_tariff_config
 
 METRICS = ["reward_mean", "energy_cost_mean", "total_cost_mean", "savings_energy_pct",
@@ -32,33 +30,9 @@ METRICS = ["reward_mean", "energy_cost_mean", "total_cost_mean", "savings_energy
            "equivalent_full_cycles_mean"]
 
 
-def deep_merge(base: dict, over: dict) -> dict:
-    """Recursively merge `over` into a copy of `base`."""
-    out = copy.deepcopy(base)
-    for k, v in over.items():
-        out[k] = deep_merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
-    return out
-
-
-# --- One seed: train, then evaluate the greedy policy on validation ---
-def run_seed(exp: dict, seed: int, splits: dict, env_cfg: dict, out_dir: Path) -> dict:
-    q = exp["qlearning"]
-    train_env = EnergyEnv(splits["train"], env_cfg, load_tariff_config(), seed=seed)
-    val_env = EnergyEnv(splits["validation"], env_cfg, load_tariff_config(), seed=seed)
-    disc = Discretizer.fit(train_env.obs_names, splits["train"], train_env.battery.p,
-                           exp["discretization"])
-    idle = ActionMap.from_fractions(train_env.fractions).idle
-    agent = QLearningAgent(disc, train_env.action_space.n, idle, q)
-
-    def eval_fn(a):
-        return evaluate(a, val_env, episodes=q["eval_episodes"], seed=42).summary["reward_mean"]
-
-    history = agent.train(train_env, q["episodes"], seed, q["eval_every"], eval_fn)
-    agent.save(out_dir / f"seed_{seed}")
-    summary = evaluate(agent, val_env, episodes=50, seed=42).summary   # same 50 weeks as baselines
-    summary["train_time_s"] = history["train_time_s"]
-    summary["states_visited"] = int((agent.N.sum(axis=1) > 0).sum())
-    summary["n_states"] = disc.n_states
+# --- One seed: train, then evaluate the greedy policy on validation (shared with the sweeps) ---
+def run_seed(exp: dict, seed: int, splits: dict, out_dir: Path) -> dict:
+    summary, history, _ = train_and_evaluate(exp, seed, splits, out_dir / f"seed_{seed}")
     return {"summary": summary, "history": history}
 
 
@@ -104,7 +78,7 @@ def main() -> None:
     # --- Train every seed ---
     runs = {}
     for seed in exp["seeds"]:
-        runs[seed] = run_seed(exp, seed, splits, env_cfg, out_dir)
+        runs[seed] = run_seed(exp, seed, splits, out_dir)
         s = runs[seed]["summary"]
         print(f"seed {seed}: reward {s['reward_mean']:.2f}, total savings {s['savings_total_pct']:.1f}%, "
               f"violations {s['violations_mean']:.2f}, {s['train_time_s']:.1f}s", flush=True)
