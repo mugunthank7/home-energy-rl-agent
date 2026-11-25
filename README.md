@@ -6,6 +6,47 @@ Reinforcement learning + LLM agent energy manager for a home battery, using real
 
 Status: Tier 0 complete, plus Tier 1 (data pipeline, simulated environment, baselines, tabular Q-learning, 8 parameter sweeps, generalization test on 2010, perfect-foresight oracles, PPO and DQN deep RL with a peak-input ablation). The language-model agent layer is not built. Results will be added only from real runs saved in `results/`.
 
+## Demo
+
+![DQN controlling a simulated battery for a held-out week](reports/figures/demo_week.gif)
+
+A trained DQN agent controlling the SIMULATED 10 kWh battery for one held-out winter week of REAL household demand
+(Jan 18-24, 2010, never seen in training). In this week and seed the bill falls from $69.18 to $62.77 and the weekly
+peak from 5.27 to 4.45 kW. This is one seed of five on one week, not the headline result: over 100 sampled 2010
+weeks DQN saves 10.5 ± 2.2% (table below). Re-create with `uv run python scripts/make_demo_gif.py`.
+
+<!-- Video walkthrough: after uploading, add a line here such as: [Watch the 8-minute walkthrough](https://...) -->
+
+## Key figures
+
+All figures are generated from the saved runs in `results/` by `scripts/make_report.py` (REAL demand, SIMULATED
+battery and tariff).
+
+**Cost, weekly peak and savings by controller on the 2010 test split.** Deep RL (PPO, DQN) cuts the weekly peak below
+the no-battery level; the tabular learners do not. The grey bar is the 5-power-level oracle and the black bar the
+continuous-power oracle, both with perfect foresight.
+
+![Controllers on the 2010 test split](reports/figures/controllers_test.png)
+
+**A winter and a summer weekday from held-out weeks.** The dashed line is the oracle, which keeps grid import almost
+flat. The full-power rule-based controller creates new peaks, especially in summer.
+
+![Representative winter and summer days](reports/figures/representative_days.png)
+
+**Deep RL learning curves, with and without the peak-so-far input.** DQN loses about 7 points of savings when the peak
+input is hidden; PPO loses about 1.3.
+
+![Deep RL learning curves](reports/figures/deep_rl_curves.png)
+
+<table>
+<tr>
+<td width="50%"><b>Tabular Q-learning sensitivity</b> (validation savings, mean of 5 seeds): low learning rates are
+better.<br><img src="reports/figures/sweep_grid_alpha_gamma_heatmap.png" alt="alpha x gamma heatmap"></td>
+<td width="50%"><b>What the coarse-grid table agent learned</b>: mostly idle, gentle charging, never full-rate
+charging.<br><img src="reports/figures/policy_heatmap_selected.png" alt="Q-table policy heatmap"></td>
+</tr>
+</table>
+
 ## Quickstart
 ```bash
 uv sync
@@ -17,6 +58,7 @@ uv run python scripts/run_oracle.py
 uv run python scripts/run_oracle_discrete.py    # about 15 minutes
 uv sync --extra oracle --extra deeprl   # optional: torch + stable-baselines3
 uv run python scripts/run_deep_rl.py    # about 6 minutes on 10 cores
+uv run python scripts/make_demo_gif.py  # demo GIF from a trained DQN
 uv run pytest
 ```
 
