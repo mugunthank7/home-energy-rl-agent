@@ -15,16 +15,16 @@ and weekly peak. Both use seed 42, the first of five seeds, chosen before lookin
 **Winter week (Jan 18-24, 2010).** The bill falls from $69.18 to $62.77 (9.3%) and the weekly peak from 5.27 to
 4.45 kW. Over five seeds this week averages 12.2 ± 4.0% savings.
 
-![DQN on a held-out winter week](reports/figures/demo_week.gif)
+![DQN on a held-out winter week](reports/figures/demo_winter_dqn.gif)
 
 **Summer week (Jul 5-11, 2010).** The bill falls from $32.54 to $27.23 (16.3%) and the weekly peak from 2.59 to
 1.92 kW. This seed does better than the five-seed average for this week (12.6 ± 4.0%). Summer is where the
 full-power rule-based controller loses 20.5%, because the week's whole peak is below the 3 kW charge power.
 
-![DQN on a held-out summer week](reports/figures/demo_week_summer.gif)
+![DQN on a held-out summer week](reports/figures/demo_summer_dqn.gif)
 
 Each GIF is one seed on one week, not the headline result: over 100 sampled 2010 weeks DQN saves 10.5 ± 2.2%
-(table below). Re-create with `uv run python scripts/make_demo_gif.py [--week summer --out reports/figures/demo_week_summer.gif]`.
+(table below). Re-create with `uv run python scripts/make_demo_gif.py [--week summer] [--algo ppo]` (the file name includes the week and algorithm).
 
 <!-- Video walkthrough: after uploading, add a line here such as: [Watch the 8-minute walkthrough](https://...) -->
 
@@ -69,7 +69,7 @@ uv run python scripts/run_oracle.py
 uv run python scripts/run_oracle_discrete.py    # about 15 minutes
 uv sync --extra oracle --extra deeprl   # optional: torch + stable-baselines3
 uv run python scripts/run_deep_rl.py    # about 6 minutes on 10 cores
-uv run python scripts/make_demo_gif.py  # demo GIFs from a trained DQN (add --week summer for the other)
+uv run python scripts/make_demo_gif.py  # demo GIFs (--week winter|summer, --algo dqn|ppo)
 uv run pytest
 ```
 

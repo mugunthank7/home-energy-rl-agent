@@ -2,9 +2,10 @@
 
 Needs the deep RL extra and a trained model: uv sync --extra deeprl, then scripts/run_deep_rl.py.
 Usage: uv run python scripts/make_demo_gif.py [--algo dqn|ppo] [--week winter|summer] [--seed 42]
-Writes reports/figures/demo_week.gif
+Writes reports/figures/demo_<week>_<algo>.gif (so different runs never overwrite each other)
 """
 import argparse
+from pathlib import Path
 
 from home_energy_rl_agent import data
 from home_energy_rl_agent.controllers.base import ActionMap
@@ -22,7 +23,7 @@ def main() -> None:
     parser.add_argument("--algo", default="dqn", choices=["dqn", "ppo"])
     parser.add_argument("--week", default="winter", choices=list(WEEKS))
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--out", default=str(data.ROOT / "reports" / "figures" / "demo_week.gif"))
+    parser.add_argument("--out", help="default: reports/figures/demo_<week>_<algo>.gif")
     args = parser.parse_args()
 
     from stable_baselines3 import DQN, PPO
@@ -38,7 +39,8 @@ def main() -> None:
     base = week_traces(NoBattery(ActionMap.from_fractions(env.fractions)), env, 0)
     subtitle = (f"{label} controlling a SIMULATED 10 kWh battery on REAL household demand\n"
                 f"held-out week {dates} (not seen in training)")
-    path = make_gif(ctrl, base, label, subtitle, __import__("pathlib").Path(args.out))
+    out = Path(args.out) if args.out else data.ROOT / "reports" / "figures" / f"demo_{args.week}_{args.algo}.gif"
+    path = make_gif(ctrl, base, label, subtitle, out)
     print(f"Wrote {path} ({path.stat().st_size / 1e6:.1f} MB); final bill ${base['bill'][-1]:.2f} -> "
           f"${ctrl['bill'][-1]:.2f}, peak {base['peak'][-1]:.2f} -> {ctrl['peak'][-1]:.2f} kW")
 
