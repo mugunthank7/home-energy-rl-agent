@@ -23,46 +23,36 @@ AUTHOR = "Mugunthan Kesavan"
 
 # (paragraph prefix to insert after, [(figure file, caption, width in inches)])
 FIGURES = [
-    ("**Exploratory analysis**", [
+    ("**Exploratory analysis", [
         ("eda_daily_profile.png",
-         "Figure 1. Mean demand by hour of day on weekdays and weekends (REAL data, 2007-2010).", 4.6),
-        ("eda_missing_heatmap.png",
-         "Figure 2. Share of days kept after cleaning, by year and month (REAL data).", 5.2),
+         "Figure 1. Mean demand by hour of day on weekdays and weekends (REAL data, 2007-2010).", 3.8),
     ]),
-    ("**Tests** (`tests/`", [
-        ("env_check_episode.png",
-         ("Figure 3. One simulated 7-day episode on real 2007 demand under a simple charge-off-peak, "
-          "discharge-on-peak rule, used only to check the environment. Battery and prices are SIMULATED."), 6.2),
-    ]),
-    ("*Table 3.*", [
+    ("The 5-seed std is 1 to 3 points", [
         ("sweep_grid_alpha_gamma_heatmap.png",
-         ("Figure 4. Total savings (%) over learning rate and discount factor, "
-          "mean of 5 seeds (validation split)."), 4.0),
+         "Figure 2. Total savings (%) over learning rate and discount factor, mean of 5 seeds (validation split).", 3.3),
         ("sweep_epsilon_convergence.png",
-         ("Figure 5. Convergence under four epsilon-decay schedules: training reward "
-          "(left) and greedy validation reward (right), mean ± std over 5 seeds."), 6.2),
-        ("sweep_discretization_final.png",
-         ("Figure 6. State-grid resolution: total savings, peak reduction and "
-          "violations (validation split, mean ± std over 5 seeds)."), 6.2),
+         ("Figure 3. Convergence under four epsilon-decay schedules: training reward (left) and greedy "
+          "validation reward (right), mean ± std over 5 seeds."), 6.0),
     ]),
-    ("*Table 4 (", [
+    ("The best tabular controller saves about", [
         ("controllers_test.png",
-         ("Figure 7. Test split (2010): weekly cost, weekly peak and total savings by controller. "
-          "Error bars are the std over seeds for learned controllers and the standard error over weeks "
-          "for deterministic ones."), 6.5),
+         ("Figure 4. Test split (2010): weekly cost, weekly peak and total savings by controller. Error bars are "
+          "the std over seeds for learned controllers and the standard error over weeks for deterministic ones."), 6.4),
     ]),
-    ("*Table 6.*", [
+    ("*Table 5. Total savings on held-out seasons", [
         ("deep_rl_curves.png",
-         ("Figure 8. Greedy validation reward of PPO and DQN during training, with and without the "
-          "peak input (mean ± std over 5 seeds)."), 5.0),
+         ("Figure 5. Greedy validation reward of PPO and DQN during training, with and without the peak input "
+          "(mean ± std over 5 seeds)."), 4.2),
     ]),
-    ("**What the learned policies look like**", [
+    ("**How far from the best possible", [
         ("representative_days.png",
-         ("Figure 9. A winter and a summer weekday from the held-out weeks: demand, grid import, "
-          "battery level, and the Q-learning agent's actions. The dashed line is the oracle."), 6.5),
+         ("Figure 6. A winter and a summer weekday from the held-out weeks: demand, grid import, battery level and "
+          "the Q-learning agent's actions. The dashed line is the oracle."), 5.4),
+    ]),
+    ("**What the learned policies look like", [
         ("policy_heatmap_selected.png",
-         ("Figure 10. Preferred action by battery level and hour for the selected "
-          "(coarse-grid) Q-learning agent, seed 42."), 6.3),
+         "Figure 7. Preferred action by battery level and hour for the selected (coarse-grid) Q-learning agent, seed 42.",
+         5.6),
     ]),
 ]
 
